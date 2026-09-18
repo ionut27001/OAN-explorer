@@ -254,8 +254,16 @@ public partial class MainWindow : Window
 
         try
         {
-            if (ShellContextMenu.Show(_vm.OwnerHandle, paths, (int)point.X, (int)point.Y))
-                _vm.RefreshCommand.Execute(null);
+            var shell = ShellContextMenu.Show(_vm.OwnerHandle, _vm.SelectedShellItems(), (int)point.X, (int)point.Y);
+            if (shell.Ran) _vm.RefreshCommand.Execute(null);
+
+            // The shell had no menu for us, or the extension that owns these files never
+            // answered. Either way the app's own menu opens, and the notice names what stalled.
+            if (shell.Refusal is { } refusal)
+            {
+                e.Handled = false;
+                _vm.Report(refusal);
+            }
         }
         catch (Exception ex)
         {
@@ -264,6 +272,16 @@ public partial class MainWindow : Window
             e.Handled = false;
             _vm.Report(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// The system property sheet. It is not run through the shell menu because that menu may
+    /// never have appeared — this item exists for exactly the case where it did not.
+    /// </summary>
+    private void OnPropertiesClick(object sender, RoutedEventArgs e)
+    {
+        var paths = _vm.SelectedPaths();
+        if (paths.Count > 0 && ShellProperties.Show(paths[0]) is { } refusal) _vm.Report(refusal);
     }
 
     private void OnListMouseMove(object sender, MouseEventArgs e)

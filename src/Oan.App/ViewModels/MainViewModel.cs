@@ -29,17 +29,9 @@ public sealed class MainViewModel : Observable
     private readonly History _history = new();
     private readonly SizeQueue _folderSizes;
     private CancellationTokenSource? _load;
-    private CancellationTokenSource? _search;
     /// <summary>Hits are appended in batches: one notification per hit would spend the whole
     /// search in layout on a folder that returns thousands.</summary>
     private const int BatchSize = 64;
-
-    private SearchTally _tally = new();
-    private bool _inSearch;
-    private bool _searchContents;
-    private bool _searchRegex;
-    private bool _searchCase;
-    private string? _searchError;
 
     private DirectoryListing _listing = new() { Path = "", Entries = [] };
     private IReadOnlyList<EntryViewModel> _rows = [];
@@ -61,11 +53,13 @@ public sealed class MainViewModel : Observable
     private SortKey _sort = SortKey.Name;
     private bool _descending;
 
-    public MainViewModel(IFileOperations ops, Settings settings)
+    public MainViewModel(IFileOperations ops, Settings settings, MountsViewModel? mounts = null)
     {
         _ops = ops;
         _settings = settings;
         _folderSizes = new SizeQueue(Measured);
+        Mounts = mounts ?? new MountsViewModel();
+        Mounts.Bind(path => Run(() => NavigateAsync(path)), Report, () => CurrentPath);
 
         BackCommand = new RelayCommand(() => Go(_history.Back()), () => _history.CanGoBack);
         ForwardCommand = new RelayCommand(() => Go(_history.Forward()), () => _history.CanGoForward);
@@ -89,8 +83,9 @@ public sealed class MainViewModel : Observable
         KindCommand = new RelayCommand(p => KindFilter = (FileKind)p!);
         ClearFiltersCommand = new RelayCommand(ClearFilters, () => Filtering);
         SearchCommand = new RelayCommand(() => Run(SearchAsync), () => _filter.Trim().Length > 0 && CurrentPath.Length > 0);
-        StopSearchCommand = new RelayCommand(StopSearch, () => _search is not null);
-        EndSearchCommand = new RelayCommand(EndSearch, () => InSearch);
+        StopSearchCommand = new RelayCommand(Search.Stop, () => Search.Running);
+        EndSearchCommand = new RelayCommand(EndSearch, () => Search.Active);
+        Search.Changed += Announce;
         MeasureSizesCommand = new RelayCommand(MeasureQuick, () => Quick.Count > 0);
 
         _newItems = [new NewItem("Folder", "Ctrl+Shift+N", NewItemCommand, null)];
@@ -118,6 +113,11 @@ public sealed class MainViewModel : Observable
 
     /// <summary>Puts the backdrop on the window and answers whether Windows took it. Set by the window.</summary>
     public Func<Backdrop, bool>? ApplyBackdrop { get; set; }
+
+    /// <summary>The disk images OAN has attached, and the only way it opens one.</summary>
+    public MountsViewModel Mounts { get; }
+
+    public SearchViewModel Search { get; } = new();
 
     public ICommand BackCommand { get; }
     public ICommand ForwardCommand { get; }
@@ -170,16 +170,6 @@ public sealed class MainViewModel : Observable
         get => _filter;
         set { if (Set(ref _filter, value)) Rebuild(); }
     }
-
-    /// <summary>
-    /// Results mode. The list is showing hits from a walk, not the current folder, so anything
-    /// that reads _listing — the count, the empty-folder message, Up — has to know.
-    /// </summary>
-    public bool InSearch { get => _inSearch; private set { if (Set(ref _inSearch, value)) Announce(); } }
-
-    public bool SearchContents { get => _searchContents; set => Set(ref _searchContents, value); }
-    public bool SearchRegex { get => _searchRegex; set => Set(ref _searchRegex, value); }
-    public bool SearchCase { get => _searchCase; set => Set(ref _searchCase, value); }
 
     /// <summary>The second filter, and it stacks with the name: both set means both applied.</summary>
     public FileKind KindFilter
@@ -290,7 +280,9 @@ public sealed class MainViewModel : Observable
         set
         {
             _selection = value;
+            Mounts.Selected(SelectedPaths());
             OnChanged();
+            OnChanged(nameof(HasSelection));
             OnChanged(nameof(StatusText));
         }
     }
@@ -304,11 +296,11 @@ public sealed class MainViewModel : Observable
     {
         get
         {
-            if (InSearch)
+            if (Search.Active)
             {
-                var running = _search is not null;
+                var running = Search.Running;
                 var head = running ? $"Searching… {Rows.Count} found" : $"{Rows.Count} found";
-                var seen = $"  ·  {_tally.FilesSeen:N0} files in {_tally.FoldersSeen:N0} folders";
+                var seen = $"  ·  {Search.Tally.FilesSeen:N0} files in {Search.Tally.FoldersSeen:N0} folders";
                 return head + seen + (_selection.Count > 0 ? $"  ·  {_selection.Count} selected" : "");
             }
 
@@ -330,15 +322,15 @@ public sealed class MainViewModel : Observable
         get
         {
             if (_notice is not null) return _notice;
-            if (_searchError is not null) return _searchError;
+            if (Search.Error is not null) return Search.Error;
 
             // Un rezultat incomplet nu se prezinta ca total.
-            if (InSearch && !_tally.Complete)
+            if (Search.Active && !Search.Tally.Complete)
             {
                 var parts = new List<string>();
-                if (_tally.Denied > 0) parts.Add($"{_tally.Denied} folder(s) denied");
-                if (_tally.Unreadable > 0) parts.Add($"{_tally.Unreadable} file(s) unreadable");
-                if (_tally.TooLarge > 0) parts.Add($"{_tally.TooLarge} too large to scan");
+                if (Search.Tally.Denied > 0) parts.Add($"{Search.Tally.Denied} folder(s) denied");
+                if (Search.Tally.Unreadable > 0) parts.Add($"{Search.Tally.Unreadable} file(s) unreadable");
+                if (Search.Tally.TooLarge > 0) parts.Add($"{Search.Tally.TooLarge} too large to scan");
                 if (parts.Count > 0) return "Results are a floor, not a total — " + string.Join(", ", parts);
             }
 
@@ -354,7 +346,7 @@ public sealed class MainViewModel : Observable
         {
             if (_listing.Error is not null) return _listing.Error;
             if (Rows.Count > 0 || CurrentPath.Length == 0) return null;
-            if (InSearch) return _search is null ? "Nothing matched." : null;
+            if (Search.Active) return Search.Running ? null : "Nothing matched.";
             return Filtering ? "No items match the filter." : "This folder is empty.";
         }
     }
@@ -381,10 +373,20 @@ public sealed class MainViewModel : Observable
     public void Open(EntryViewModel row)
     {
         if (row.Entry.IsDirectory) Run(() => NavigateAsync(row.Entry.FullPath));
+        // Never the shell's default verb for an image: that verb is the one that hangs.
+        else if (MountsViewModel.IsImage(row.Entry.FullPath)) Run(() => Mounts.OpenAsync(row.Entry.FullPath));
         else Launch(row.Entry.FullPath);
     }
 
     public IReadOnlyList<string> SelectedPaths() => _selection.Select(r => r.Entry.FullPath).ToArray();
+
+    /// <summary>
+    /// The selection as the shell wants it. The directory flag comes from the row we already
+    /// have, so building the menu never has to go back to disk to ask what these things are —
+    /// which on this machine is a question that can hang.
+    /// </summary>
+    public IReadOnlyList<ShellItem> SelectedShellItems() =>
+        _selection.Select(r => new ShellItem(r.Entry.FullPath, r.Entry.IsDirectory)).ToArray();
 
     public void Drop(IReadOnlyList<string> paths, bool move) => Run(() => DropAsync(paths, move));
 
@@ -398,6 +400,9 @@ public sealed class MainViewModel : Observable
     {
         _load?.Cancel();
         _folderSizes.Dispose();
+
+        // An image still attached after OAN exits is litter on the user's machine.
+        Mounts.Dispose();
     }
 
     private Task DropAsync(IReadOnlyList<string> paths, bool move)
@@ -432,7 +437,7 @@ public sealed class MainViewModel : Observable
         set { _notice = value; OnChanged(nameof(WarningText)); }
     }
 
-    private bool HasSelection => _selection.Count > 0;
+    public bool HasSelection => _selection.Count > 0;
 
     /// <summary>A setting that could not be written is said out loud. It still applies this run.</summary>
     private void Remember()
@@ -499,23 +504,19 @@ public sealed class MainViewModel : Observable
     /// </summary>
     private async Task SearchAsync()
     {
-        if (BuildQuery() is not { } query) return;
+        if (Search.Build(_filter, CurrentPath, ShowHidden) is not { } query) return;
 
-        StopSearch();
-        var cts = new CancellationTokenSource();
-        _search = cts;
-        _searchError = null;
-        _tally = new SearchTally();
-        InSearch = true;
+        var run = Search.Begin();
         Selection = [];
         Rows = [];
 
         var engine = new FileSearch(query.SearchesContent ? new ContentMatcher(query) : null);
         var batch = new List<EntryViewModel>(BatchSize);
+        string? error = null;
 
         try
         {
-            await foreach (var hit in engine.RunAsync(query, cts.Token).ConfigureAwait(true))
+            await foreach (var hit in engine.RunAsync(query, run.Token).ConfigureAwait(true))
             {
                 batch.Add(Row(hit));
                 if (batch.Count >= BatchSize) Flush(batch, engine);
@@ -526,44 +527,13 @@ public sealed class MainViewModel : Observable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _searchError = ex.Message;
+            error = ex.Message;
         }
         finally
         {
-            if (_search == cts)
-            {
-                Flush(batch, engine);
-                _search = null;
-                _tally = engine.Tally;
-                Announce();
-            }
-            cts.Dispose();
+            if (Search.Finish(run, engine.Tally, error)) Flush(batch, engine);
+            run.Dispose();
         }
-    }
-
-    /// <summary>The query, or null when there is nothing to ask or the pattern will not compile.</summary>
-    private SearchQuery? BuildQuery()
-    {
-        var term = _filter.Trim();
-        if (term.Length == 0 || CurrentPath.Length == 0) return null;
-
-        var query = new SearchQuery
-        {
-            Root = CurrentPath,
-            Name = SearchContents ? null : term,
-            NameMode = SearchRegex ? NameMatch.Regex : NameMatch.Substring,
-            Content = SearchContents ? term : null,
-            ContentIsRegex = SearchContents && SearchRegex,
-            CaseSensitive = SearchCase,
-            IncludeHidden = ShowHidden,
-        };
-
-        // A pattern that does not compile is an error, never a search that found nothing.
-        if (query.Invalid() is not { } bad) return query;
-
-        _searchError = bad;
-        OnChanged(nameof(WarningText));
-        return null;
     }
 
     private EntryViewModel Row(SearchHit hit) => new(
@@ -585,27 +555,17 @@ public sealed class MainViewModel : Observable
             batch.Clear();
         }
 
-        _tally = engine.Tally;
-        Announce();
+        Search.Progress(engine.Tally);
     }
 
     /// <summary>Leaves results mode and reloads the folder the search started from.</summary>
     private void EndSearch()
     {
-        StopSearch();
-        if (!InSearch) return;
+        if (!Search.Active) return;
 
-        InSearch = false;
+        Search.Leave();
         Filter = "";
         Run(ReloadAsync);
-    }
-
-    private void StopSearch()
-    {
-        var running = _search;
-        _search = null;
-        running?.Cancel();
-        Announce();
     }
 
     private void Announce()
@@ -623,8 +583,7 @@ public sealed class MainViewModel : Observable
     /// </summary>
     private void LeaveSearch()
     {
-        StopSearch();
-        _inSearch = false;
+        Search.Leave();
 
         if (_filter.Length == 0) return;
 
@@ -882,8 +841,7 @@ public sealed class MainViewModel : Observable
             return;
         }
 
-        foreach (var row in _selection.Where(r => !r.Entry.IsDirectory))
-            Launch(row.Entry.FullPath);
+        foreach (var row in _selection.Where(r => !r.Entry.IsDirectory)) Open(row);
     }
 
     private void Launch(string path)

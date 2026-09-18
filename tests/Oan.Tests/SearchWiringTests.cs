@@ -45,7 +45,7 @@ public class SearchWiringTests
 
         // Exactly the reported behaviour, kept as the baseline the search has to improve on.
         Assert.Empty(vm.Rows);
-        Assert.False(vm.InSearch);
+        Assert.False(vm.Search.Active);
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public class SearchWiringTests
         vm.Filter = "teo";
         await SearchAndSettle(vm);
 
-        Assert.True(vm.InSearch);
+        Assert.True(vm.Search.Active);
         Assert.Equal(["teo-arhiva", "teo-poze.txt"], vm.Rows.Select(r => r.Name).OrderBy(n => n));
     }
 
@@ -73,11 +73,11 @@ public class SearchWiringTests
         temp.AddFile("a.txt");
 
         var vm = Open(temp.Root);
-        vm.SearchRegex = true;
+        vm.Search.Regex = true;
         vm.Filter = "([unclosed";
         await SearchAndSettle(vm);
 
-        Assert.False(vm.InSearch);
+        Assert.False(vm.Search.Active);
         Assert.NotNull(vm.WarningText);
     }
 
@@ -91,7 +91,7 @@ public class SearchWiringTests
         File.WriteAllText(Path.Combine(deep, "other.txt"), "nothing at all");
 
         var vm = Open(temp.Root);
-        vm.SearchContents = true;
+        vm.Search.Contents = true;
         vm.Filter = "acul in carul";
         await SearchAndSettle(vm);
 
@@ -109,12 +109,12 @@ public class SearchWiringTests
         var vm = Open(temp.Root);
         vm.Filter = "teo";
         await SearchAndSettle(vm);
-        Assert.True(vm.InSearch);
+        Assert.True(vm.Search.Active);
 
         vm.EndSearchCommand.Execute(null);
-        for (var i = 0; i < 100 && vm.InSearch; i++) await Task.Delay(25);
+        for (var i = 0; i < 100 && vm.Search.Active; i++) await Task.Delay(25);
 
-        Assert.False(vm.InSearch);
+        Assert.False(vm.Search.Active);
         Assert.Equal("", vm.Filter);
     }
 

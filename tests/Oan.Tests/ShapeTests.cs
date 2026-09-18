@@ -27,10 +27,13 @@ public class ShapeTests
     /// <summary>Known exceptions: path, the ceiling it may not pass, and why it is here at all.</summary>
     private static readonly (string File, int Ceiling, string Why)[] Allowed =
     [
-        ("src/Oan.App/ViewModels/MainViewModel.cs", 960,
-            "Navigation, selection, clipboard, file operations, search, sidebar and settings in one class. " +
-            "This is the file to split; the ceiling is here so it cannot grow while that waits."),
-        ("src/Oan.App/MainWindow.xaml", 620, "One window's markup. XAML does not factor the way code does."),
+        // 928 -> 965 when mounting landed, which is what tripped this test; search moved out to
+        // SearchViewModel and it is 904 now. The ceiling follows it down each time, so the only
+        // direction this file can go is smaller. Still holding navigation, selection, clipboard,
+        // file operations, the sidebar and settings — clipboard is the next one out.
+        ("src/Oan.App/ViewModels/MainViewModel.cs", 910,
+            "Several concerns still in one class; the ceiling ratchets down as they leave."),
+        ("src/Oan.App/MainWindow.xaml", 540, "One window's markup. XAML does not factor the way code does."),
         ("src/Oan.App/Themes/Controls.xaml", 430, "Control templates for the whole app, in one dictionary."),
     ];
 

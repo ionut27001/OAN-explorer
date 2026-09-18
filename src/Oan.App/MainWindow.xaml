@@ -11,6 +11,7 @@
 
   <Window.Resources>
     <ctl:IsConverter x:Key="Is" />
+    <BooleanToVisibilityConverter x:Key="Show" />
 
     <DataTemplate x:Key="NameHeaderTemplate">
       <TextBlock Text="{Binding DataContext.NameHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
@@ -104,35 +105,6 @@
       </Style.Triggers>
     </Style>
 
-    <Style x:Key="DriveBar" TargetType="ProgressBar">
-      <Setter Property="Height" Value="4" />
-      <Setter Property="Minimum" Value="0" />
-      <Setter Property="Maximum" Value="1" />
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="ProgressBar">
-            <Grid>
-              <Border Background="{DynamicResource Border}" CornerRadius="2" />
-              <Rectangle x:Name="PART_Track" Fill="Transparent" />
-              <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
-                      Background="{DynamicResource Accent}" CornerRadius="2" />
-            </Grid>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding UsedFraction}" Value="{x:Null}">
-          <Setter Property="Visibility" Value="Collapsed" />
-        </DataTrigger>
-      </Style.Triggers>
-    </Style>
-
-    <Style x:Key="SectionLabel" TargetType="TextBlock">
-      <Setter Property="Foreground" Value="{DynamicResource FgMuted}" />
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="Margin" Value="10,10,0,4" />
-    </Style>
-
     <!-- Sits inside the search box. It clears the kind filter as well, because one control that
          says "clear" and leaves half the items hidden is worse than no control at all. -->
     <Style x:Key="ClearButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
@@ -166,12 +138,6 @@
           <Setter Property="Visibility" Value="Collapsed" />
         </DataTrigger>
       </Style.Triggers>
-    </Style>
-
-    <Style x:Key="SideNote" TargetType="TextBlock">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
   </Window.Resources>
 
@@ -470,60 +436,7 @@
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
 
-      <Border Style="{StaticResource ChromeBar}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <StackPanel Margin="6,0,2,8">
-            <DockPanel>
-              <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Padding="6,1" Margin="0,8,4,0"
-                      Command="{Binding MeasureSizesCommand}"
-                      ToolTip="Measure folder sizes — the home folder can take about a minute">
-                <TextBlock Text="Sizes" FontSize="11" Foreground="{DynamicResource Accent}" />
-              </Button>
-              <TextBlock Text="Quick access" Style="{StaticResource SectionLabel}" />
-            </DockPanel>
-            <ItemsControl ItemsSource="{Binding Quick}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
-                          CommandParameter="{Binding Path}" ToolTip="{Binding Tip}"
-                          Command="{Binding DataContext.OpenPlaceCommand,
-                                    RelativeSource={RelativeSource AncestorType=Window}}">
-                    <DockPanel>
-                      <TextBlock DockPanel.Dock="Right" Text="{Binding SizeText}" Margin="8,0,0,0"
-                                 Style="{StaticResource SideNote}" />
-                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE8B7;" Foreground="{DynamicResource Accent}" />
-                      <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
-                  </Button>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <TextBlock Text="This PC" Style="{StaticResource SectionLabel}" />
-            <ItemsControl ItemsSource="{Binding Drives}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
-                          CommandParameter="{Binding Path}" ToolTip="{Binding Path}"
-                          Command="{Binding DataContext.OpenPlaceCommand,
-                                    RelativeSource={RelativeSource AncestorType=Window}}">
-                    <StackPanel>
-                      <StackPanel Orientation="Horizontal">
-                        <TextBlock Style="{StaticResource Glyph}" Text="&#xEDA2;" Foreground="{DynamicResource FgMuted}" />
-                        <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
-                      <ProgressBar Style="{StaticResource DriveBar}" Margin="24,5,4,2"
-                                   Value="{Binding UsedFraction, Mode=OneWay, FallbackValue=0}" />
-                      <TextBlock Text="{Binding CapacityText}" Margin="24,0,4,2"
-                                 Style="{StaticResource SideNote}" />
-                    </StackPanel>
-                  </Button>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
-        </ScrollViewer>
-      </Border>
+      <ctl:Sidebar />
 
       <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
                     DragCompleted="OnSplitterDragged" />
@@ -558,6 +471,10 @@
             <ListView.ContextMenu>
               <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                 <MenuItem Header="Open" Command="{Binding OpenSelectionCommand}" InputGestureText="Enter" />
+                <!-- Mount is OAN's own, through the VirtDisk API: no shell extension is loaded,
+                     which is the whole reason this menu exists on this machine. -->
+                <MenuItem Header="{Binding Mounts.MountHeader}" Command="{Binding Mounts.MountCommand}"
+                          Visibility="{Binding Mounts.ShowMount, Converter={StaticResource Show}}" />
                 <Separator />
                 <MenuItem Header="Cut" Command="{Binding CutCommand}" InputGestureText="Ctrl+X" />
                 <MenuItem Header="Copy" Command="{Binding CopyCommand}" InputGestureText="Ctrl+C" />
@@ -577,6 +494,8 @@
                     </Style>
                   </MenuItem.ItemContainerStyle>
                 </MenuItem>
+                <Separator />
+                <MenuItem Header="Properties" Click="OnPropertiesClick" IsEnabled="{Binding HasSelection}" />
               </ContextMenu>
             </ListView.ContextMenu>
           </ListView>

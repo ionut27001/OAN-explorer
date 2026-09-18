@@ -8,5 +8,6 @@
     <!-- UseWPF switches to the desktop SDK's implicit usings, which drop these two. -->
     <Using Include="System.IO" />
     <Using Include="System.Net.Http" />
+    <InternalsVisibleTo Include="Oan.Tests" />
   </ItemGroup>
 </Project>

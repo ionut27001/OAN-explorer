@@ -212,4 +212,12 @@ internal static class Native
 
     [DllImport("user32.dll")]
     internal static extern short GetKeyState(int key);
+
+    // COM alone is not enough for the thread a shell menu runs on: Cut and Copy hand an
+    // IDataObject to the clipboard, which is the OLE part.
+    [DllImport("ole32.dll")]
+    internal static extern int OleInitialize(nint reserved);
+
+    [DllImport("ole32.dll")]
+    internal static extern void OleUninitialize();
 }
