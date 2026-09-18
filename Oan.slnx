@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Oan.App/Oan.App.csproj" />
+    <Project Path="src/Oan.Core/Oan.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Oan.Tests/Oan.Tests.csproj" />
+  </Folder>
+</Solution>
