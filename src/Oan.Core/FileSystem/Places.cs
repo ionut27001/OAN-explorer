@@ -2,7 +2,7 @@ using Oan.Core.Model;
 
 namespace Oan.Core.FileSystem;
 
-public enum PlaceKind { Folder, Drive, Recycle }
+public enum PlaceKind { Folder, File, Drive, Recycle }
 
 public sealed record Place
 {
@@ -34,6 +34,41 @@ public static class Places
         (Environment.SpecialFolder.MyMusic, "Music"),
         (Environment.SpecialFolder.MyVideos, "Videos"),
     ];
+
+    /// <summary>
+    /// Starred paths, resolved for display, in the order the user starred them.
+    ///
+    /// A path that no longer exists comes back with Available false rather than being dropped:
+    /// a star is something the user put there, and silently removing it is both a loss and
+    /// indistinguishable from never having starred it. Renaming or moving a starred item does
+    /// break the entry — it is stored by path — and the honest answer is to show it as gone so
+    /// the user can act, not to guess.
+    /// </summary>
+    public static IReadOnlyList<Place> Starred(IEnumerable<string> paths)
+    {
+        var places = new List<Place>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var raw in paths)
+        {
+            if (string.IsNullOrWhiteSpace(raw) || !seen.Add(raw)) continue;
+
+            var isFolder = Directory.Exists(raw);
+            var isFile = !isFolder && File.Exists(raw);
+            var name = System.IO.Path.GetFileName(raw.TrimEnd(
+                System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+
+            places.Add(new Place
+            {
+                Name = string.IsNullOrEmpty(name) ? raw : name,
+                Path = raw,
+                Kind = isFile ? PlaceKind.File : PlaceKind.Folder,
+                Available = isFolder || isFile,
+            });
+        }
+
+        return places;
+    }
 
     public static IReadOnlyList<Place> Quick()
     {
