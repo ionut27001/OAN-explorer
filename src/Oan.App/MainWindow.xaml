@@ -460,11 +460,14 @@
       </DockPanel>
     </Border>
 
-    <Grid>
+    <Grid x:Name="Body" SizeChanged="OnBodySizeChanged">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="220" MinWidth="150" />
+        <ColumnDefinition x:Name="SidebarColumn" Width="220" MinWidth="150" />
         <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="*" MinWidth="300" />
+        <!-- No MinWidth here: a minimum on both sides means neither can yield, and the grid
+             answers by overflowing the window. The list's floor is enforced in code instead,
+             against the width the window actually has. -->
+        <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
 
       <Border Style="{StaticResource ChromeBar}">
@@ -522,7 +525,8 @@
         </ScrollViewer>
       </Border>
 
-      <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="Transparent" />
+      <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
+                    DragCompleted="OnSplitterDragged" />
 
       <!-- The one opaque surface in the window. Text over a wallpaper reads at whatever contrast
            the wallpaper happens to have, so the backdrop stops at the edge of the list. -->

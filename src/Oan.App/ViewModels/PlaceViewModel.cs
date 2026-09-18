@@ -14,6 +14,30 @@ public sealed class PlaceViewModel(Place place) : Observable
 {
     private FolderSizeResult? _result;
     private SizeState _state = SizeState.Unmeasured;
+    private bool _isCurrent;
+
+    /// <summary>
+    /// True while the list is showing this place. Matched on the path, and by prefix for a
+    /// drive: standing in C:\Users\oance is standing on C:, and an exact match would leave the
+    /// sidebar looking as if nothing were selected almost always.
+    /// </summary>
+    public bool IsCurrent { get => _isCurrent; private set => Set(ref _isCurrent, value); }
+
+    public void Track(string? currentPath)
+    {
+        if (string.IsNullOrEmpty(currentPath) || Path.Length == 0)
+        {
+            IsCurrent = false;
+            return;
+        }
+
+        IsCurrent = place.Kind == PlaceKind.Drive
+            ? currentPath.StartsWith(Path, StringComparison.OrdinalIgnoreCase)
+            : string.Equals(
+                currentPath.TrimEnd(System.IO.Path.DirectorySeparatorChar),
+                Path.TrimEnd(System.IO.Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
+    }
 
     public string Name => place.Name;
     public string Path => place.Path;

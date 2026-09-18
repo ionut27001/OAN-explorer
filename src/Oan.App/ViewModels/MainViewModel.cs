@@ -492,6 +492,7 @@ public sealed class MainViewModel : Observable
             Address = path;
             EditingAddress = false;
             Crumbs = BuildCrumbs(path);
+            TrackPlaces();
             Rebuild();
 
             OnChanged(nameof(CurrentPath));
@@ -702,6 +703,13 @@ public sealed class MainViewModel : Observable
         OnChanged(nameof(KindFilterText));
         OnChanged(nameof(KindFiltered));
         Rebuild();
+    }
+
+    /// <summary>Lights the sidebar entry the list is standing in, so the pane is not silent about where you are.</summary>
+    private void TrackPlaces()
+    {
+        foreach (var place in Quick) place.Track(CurrentPath);
+        foreach (var drive in Drives) drive.Track(CurrentPath);
     }
 
     private void ShowQuick(IReadOnlyList<Place> places)

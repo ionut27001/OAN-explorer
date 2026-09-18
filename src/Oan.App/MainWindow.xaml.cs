@@ -80,6 +80,33 @@ public partial class MainWindow : Window
         return applied;
     }
 
+
+    private const double ListFloor = 320;
+
+    /// <summary>
+    /// Keeps the sidebar from pushing the list out of the window.
+    ///
+    /// A MinWidth on both columns is not enough and is in fact the cause: when neither side can
+    /// yield, WPF satisfies both and lets the grid overflow, so the list ends up drawn past the
+    /// window edge. The list's floor is applied here instead, against the width the window
+    /// actually has, and it gives way when there is not enough room for it either.
+    /// </summary>
+    private void ClampSidebar()
+    {
+        var total = Body.ActualWidth;
+        if (total <= 0) return;
+
+        var ceiling = Math.Max(SidebarColumn.MinWidth, total - ListFloor);
+        var width = SidebarColumn.ActualWidth;
+
+        if (width > ceiling) SidebarColumn.Width = new GridLength(ceiling);
+    }
+
+    private void OnBodySizeChanged(object sender, SizeChangedEventArgs e) => ClampSidebar();
+
+    private void OnSplitterDragged(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e) =>
+        ClampSidebar();
+
     protected override void OnActivated(EventArgs e)
     {
         base.OnActivated(e);

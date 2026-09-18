@@ -63,6 +63,15 @@
   <Style x:Key="SideButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="Padding" Value="8,5" />
+    <Style.Triggers>
+      <!-- Where you are. Colour alone would be the only signal for someone who cannot tell
+           these two apart, so the accent bar carries it too. -->
+      <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+        <Setter Property="Background" Value="{DynamicResource Selected}" />
+        <Setter Property="Foreground" Value="{DynamicResource SelectedFg}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+      </DataTrigger>
+    </Style.Triggers>
   </Style>
 
   <Style x:Key="ToolToggle" TargetType="ToggleButton" BasedOn="{StaticResource FlatButton}">
