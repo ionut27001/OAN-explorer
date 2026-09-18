@@ -2,12 +2,16 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Oan.App.ViewModels"
+        xmlns:ctl="clr-namespace:Oan.App.Controls"
+        xmlns:pf="clr-namespace:Oan.App.Platform"
         Title="OAN" Width="1120" Height="700" MinWidth="700" MinHeight="420"
         Background="{DynamicResource WindowBg}" Foreground="{DynamicResource Fg}"
         FontFamily="Segoe UI" FontSize="13" TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True" PreviewKeyDown="OnWindowKeyDown">
 
   <Window.Resources>
+    <ctl:IsConverter x:Key="Is" />
+
     <DataTemplate x:Key="NameHeaderTemplate">
       <TextBlock Text="{Binding DataContext.NameHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
     </DataTemplate>
@@ -20,6 +24,85 @@
     <DataTemplate x:Key="ModifiedHeaderTemplate">
       <TextBlock Text="{Binding DataContext.ModifiedHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
     </DataTemplate>
+
+    <GridView x:Key="DetailsView" AllowsColumnReorder="False">
+      <GridViewColumn Header="Name" HeaderTemplate="{StaticResource NameHeaderTemplate}" Width="380">
+        <GridViewColumn.CellTemplate>
+          <DataTemplate>
+            <StackPanel x:Name="Cell" Orientation="Horizontal">
+              <Image Width="16" Height="16" Margin="0,0,10,0" Source="{Binding Icon}"
+                     RenderOptions.BitmapScalingMode="HighQuality" />
+              <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+              <DataTrigger Binding="{Binding IsHidden}" Value="True">
+                <Setter TargetName="Cell" Property="Opacity" Value="0.55" />
+              </DataTrigger>
+            </DataTemplate.Triggers>
+          </DataTemplate>
+        </GridViewColumn.CellTemplate>
+      </GridViewColumn>
+
+      <GridViewColumn Header="Size" HeaderTemplate="{StaticResource SizeHeaderTemplate}" Width="100">
+        <GridViewColumn.CellTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding SizeText}" HorizontalAlignment="Right" Margin="0,0,10,0" />
+          </DataTemplate>
+        </GridViewColumn.CellTemplate>
+      </GridViewColumn>
+
+      <GridViewColumn Header="Kind" HeaderTemplate="{StaticResource KindHeaderTemplate}" Width="140"
+                      DisplayMemberBinding="{Binding KindText}" />
+      <GridViewColumn Header="Modified" HeaderTemplate="{StaticResource ModifiedHeaderTemplate}" Width="170"
+                      DisplayMemberBinding="{Binding ModifiedText}" />
+    </GridView>
+
+    <!-- The icon is sized explicitly rather than by the bitmap: a 256px request can legitimately
+         come back as a cropped 48px image, and a tile that sized itself would then be a small
+         icon standing next to large ones. -->
+    <DataTemplate x:Key="TileTemplate">
+      <StackPanel x:Name="Tile" Margin="4,8,4,0">
+        <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality"
+               Width="{Binding DataContext.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}"
+               Height="{Binding DataContext.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}" />
+        <TextBlock Text="{Binding Name}" Margin="2,6,2,0" MaxHeight="34"
+                   TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+      </StackPanel>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding IsHidden}" Value="True">
+          <Setter TargetName="Tile" Property="Opacity" Value="0.55" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <ItemsPanelTemplate x:Key="TilePanel">
+      <ctl:VirtualizingWrapPanel ItemWidth="{Binding TileWidth}" ItemHeight="{Binding TileHeight}" />
+    </ItemsPanelTemplate>
+
+    <!-- Container style and panel switch together, set here rather than on the ListView because a
+         local value on the element would outrank the trigger. The View is the exception: it is
+         assigned in code-behind, because a ListView rejects a GridView that is already in use and
+         a style re-applies its value whenever a trigger re-evaluates. -->
+    <Style x:Key="FileList" TargetType="ListView">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="ItemContainerStyle" Value="{StaticResource Row}" />
+      <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
+      <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+      <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsDetails}" Value="False">
+          <Setter Property="ItemContainerStyle" Value="{StaticResource Tile}" />
+          <Setter Property="ItemTemplate" Value="{StaticResource TileTemplate}" />
+          <Setter Property="ItemsPanel" Value="{StaticResource TilePanel}" />
+          <!-- The wrap panel releases containers rather than recycling them. -->
+          <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Standard" />
+          <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
 
     <Style x:Key="DriveBar" TargetType="ProgressBar">
       <Setter Property="Height" Value="4" />
@@ -49,6 +132,47 @@
       <Setter Property="FontSize" Value="11" />
       <Setter Property="Margin" Value="10,10,0,4" />
     </Style>
+
+    <!-- Sits inside the search box. It clears the kind filter as well, because one control that
+         says "clear" and leaves half the items hidden is worse than no control at all. -->
+    <Style x:Key="ClearButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="Margin" Value="0,0,3,0" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Filtering}" Value="True">
+          <Setter Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="FilterButton" TargetType="Button" BasedOn="{StaticResource ToolButton}">
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding KindFiltered}" Value="True">
+          <Setter Property="Background" Value="{DynamicResource Selected}" />
+          <Setter Property="Foreground" Value="{DynamicResource SelectedFg}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="KindLabel" TargetType="TextBlock">
+      <Setter Property="Margin" Value="6,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding KindFilterText}" Value="">
+          <Setter Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SideNote" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
   </Window.Resources>
 
   <!-- Window scope for everything a text box does not already claim, so the toolbar tooltips
@@ -67,7 +191,7 @@
 
   <DockPanel>
 
-    <Border DockPanel.Dock="Top" Padding="8,8,8,4">
+    <Border DockPanel.Dock="Top" Padding="8,8,8,4" Style="{StaticResource ChromeBar}">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
@@ -144,8 +268,14 @@
           </Grid>
         </Border>
 
-        <Grid Grid.Column="2" Width="210">
+        <Grid Grid.Column="2" Width="300">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
           <TextBox x:Name="SearchBox" Height="30" AutomationProperties.Name="Search this folder"
+                   Padding="10,0,28,0"
                    Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=120}" />
           <TextBlock Text="Search this folder" Margin="10,0,0,0" VerticalAlignment="Center"
                      IsHitTestVisible="False" Foreground="{DynamicResource FgDim}">
@@ -160,11 +290,45 @@
               </Style>
             </TextBlock.Style>
           </TextBlock>
+
+          <Button Style="{StaticResource ClearButton}" Command="{Binding ClearFiltersCommand}"
+                  ToolTip="Clear the filters">
+            <TextBlock Style="{StaticResource Glyph}" FontSize="11" Text="&#xE711;" />
+          </Button>
+
+          <Button Grid.Column="1" Margin="6,0,0,0" Style="{StaticResource FilterButton}"
+                  Click="OnMenuButtonClick" ToolTip="Filter by type">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Style="{StaticResource Glyph}" Text="&#xE71C;" />
+              <TextBlock Text="{Binding KindFilterText}" Style="{StaticResource KindLabel}" />
+            </StackPanel>
+            <Button.ContextMenu>
+              <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                <MenuItem Header="All types" Command="{Binding KindCommand}" CommandParameter="{x:Static pf:FileKind.All}"
+                          IsChecked="{Binding KindFilter, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=All}" />
+                <Separator />
+                <MenuItem Header="Folders" Command="{Binding KindCommand}" CommandParameter="{x:Static pf:FileKind.Folders}"
+                          IsChecked="{Binding KindFilter, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Folders}" />
+                <MenuItem Header="Documents" Command="{Binding KindCommand}" CommandParameter="{x:Static pf:FileKind.Documents}"
+                          IsChecked="{Binding KindFilter, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Documents}" />
+                <MenuItem Header="Images" Command="{Binding KindCommand}" CommandParameter="{x:Static pf:FileKind.Images}"
+                          IsChecked="{Binding KindFilter, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Images}" />
+                <MenuItem Header="Audio" Command="{Binding KindCommand}" CommandParameter="{x:Static pf:FileKind.Audio}"
+                          IsChecked="{Binding KindFilter, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Audio}" />
+                <MenuItem Header="Video" Command="{Binding KindCommand}" CommandParameter="{x:Static pf:FileKind.Video}"
+                          IsChecked="{Binding KindFilter, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Video}" />
+                <MenuItem Header="Archives" Command="{Binding KindCommand}" CommandParameter="{x:Static pf:FileKind.Archives}"
+                          IsChecked="{Binding KindFilter, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Archives}" />
+                <MenuItem Header="Code" Command="{Binding KindCommand}" CommandParameter="{x:Static pf:FileKind.Code}"
+                          IsChecked="{Binding KindFilter, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Code}" />
+              </ContextMenu>
+            </Button.ContextMenu>
+          </Button>
         </Grid>
       </Grid>
     </Border>
 
-    <Border DockPanel.Dock="Top" Padding="8,0,8,8">
+    <Border DockPanel.Dock="Top" Padding="8,0,8,8" Style="{StaticResource ChromeBar}">
       <DockPanel>
         <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" Command="{Binding NewFolderCommand}"
                 ToolTip="New folder (Ctrl+Shift+N)">
@@ -196,6 +360,61 @@
           <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;" />
         </Button>
 
+        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Click="OnMenuButtonClick"
+                ToolTip="Window transparency">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE790;" />
+          <Button.ContextMenu>
+            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+              <MenuItem Header="Mica" IsEnabled="{Binding BackdropSupported}"
+                        Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Mica}"
+                        IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Mica}" />
+              <MenuItem Header="Acrylic" IsEnabled="{Binding BackdropSupported}"
+                        Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Acrylic}"
+                        IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Acrylic}" />
+              <MenuItem Header="Solid"
+                        Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Solid}"
+                        IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Solid}" />
+              <MenuItem Header="{Binding BackdropNote}" IsEnabled="False">
+                <MenuItem.Style>
+                  <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding BackdropNote}" Value="{x:Null}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </MenuItem.Style>
+              </MenuItem>
+            </ContextMenu>
+          </Button.ContextMenu>
+        </Button>
+
+        <Border DockPanel.Dock="Right" Margin="8,0,0,0" Padding="2" CornerRadius="5"
+                Background="{DynamicResource Hover}">
+          <StackPanel Orientation="Horizontal">
+            <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Details — 16 px icons"
+                         IsChecked="{Binding IconSize, Converter={StaticResource Is}, ConverterParameter=16}">
+              <StackPanel>
+                <Rectangle Width="13" Height="2" Margin="0,0,0,3" Fill="{DynamicResource Fg}" />
+                <Rectangle Width="13" Height="2" Margin="0,0,0,3" Fill="{DynamicResource Fg}" />
+                <Rectangle Width="13" Height="2" Fill="{DynamicResource Fg}" />
+              </StackPanel>
+            </RadioButton>
+            <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Medium icons — 32 px"
+                         IsChecked="{Binding IconSize, Converter={StaticResource Is}, ConverterParameter=32}">
+              <Rectangle Width="8" Height="8" RadiusX="1" RadiusY="1" Fill="{DynamicResource Fg}" />
+            </RadioButton>
+            <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Large icons — 48 px"
+                         IsChecked="{Binding IconSize, Converter={StaticResource Is}, ConverterParameter=48}">
+              <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2" Fill="{DynamicResource Fg}" />
+            </RadioButton>
+            <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Extra large icons — 256 px"
+                         IsChecked="{Binding IconSize, Converter={StaticResource Is}, ConverterParameter=256}">
+              <Rectangle Width="16" Height="16" RadiusX="2" RadiusY="2" Fill="{DynamicResource Fg}" />
+            </RadioButton>
+          </StackPanel>
+        </Border>
+
         <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}"
                       IsChecked="{Binding ShowHidden}" ToolTip="Show hidden and system items">
           <StackPanel Orientation="Horizontal">
@@ -204,7 +423,7 @@
           </StackPanel>
         </ToggleButton>
 
-        <Button x:Name="SortButton" DockPanel.Dock="Right" Style="{StaticResource ToolButton}" Click="OnSortButtonClick">
+        <Button DockPanel.Dock="Right" Style="{StaticResource ToolButton}" Click="OnMenuButtonClick" ToolTip="Sort by">
           <StackPanel Orientation="Horizontal">
             <TextBlock Style="{StaticResource Glyph}" Text="&#xE8CB;" />
             <TextBlock Text="Sort" Margin="6,0,0,0" />
@@ -224,7 +443,7 @@
     </Border>
 
     <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
-            Padding="12,6">
+            Padding="12,6" Style="{StaticResource ChromeBar}">
       <DockPanel>
         <TextBlock DockPanel.Dock="Right" Text="{Binding FreeText}" Foreground="{DynamicResource FgMuted}" />
         <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource FgMuted}" />
@@ -240,60 +459,71 @@
         <ColumnDefinition Width="*" MinWidth="300" />
       </Grid.ColumnDefinitions>
 
-      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="6,0,2,8">
-          <TextBlock Text="Quick access" Style="{StaticResource SectionLabel}" />
-          <ItemsControl ItemsSource="{Binding Quick}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
-                        CommandParameter="{Binding Path}" ToolTip="{Binding Path}"
-                        Command="{Binding DataContext.OpenPlaceCommand,
-                                  RelativeSource={RelativeSource AncestorType=Window}}">
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE8B7;" Foreground="{DynamicResource Accent}" />
-                    <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
-                  </StackPanel>
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-
-          <TextBlock Text="This PC" Style="{StaticResource SectionLabel}" />
-          <ItemsControl ItemsSource="{Binding Drives}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
-                        CommandParameter="{Binding Path}" ToolTip="{Binding Path}"
-                        Command="{Binding DataContext.OpenPlaceCommand,
-                                  RelativeSource={RelativeSource AncestorType=Window}}">
-                  <StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                      <TextBlock Style="{StaticResource Glyph}" Text="&#xEDA2;" Foreground="{DynamicResource FgMuted}" />
+      <Border Style="{StaticResource ChromeBar}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="6,0,2,8">
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Padding="6,1" Margin="0,8,4,0"
+                      Command="{Binding MeasureSizesCommand}"
+                      ToolTip="Measure folder sizes — the home folder can take about a minute">
+                <TextBlock Text="Sizes" FontSize="11" Foreground="{DynamicResource Accent}" />
+              </Button>
+              <TextBlock Text="Quick access" Style="{StaticResource SectionLabel}" />
+            </DockPanel>
+            <ItemsControl ItemsSource="{Binding Quick}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
+                          CommandParameter="{Binding Path}" ToolTip="{Binding Tip}"
+                          Command="{Binding DataContext.OpenPlaceCommand,
+                                    RelativeSource={RelativeSource AncestorType=Window}}">
+                    <DockPanel>
+                      <TextBlock DockPanel.Dock="Right" Text="{Binding SizeText}" Margin="8,0,0,0"
+                                 Style="{StaticResource SideNote}" />
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE8B7;" Foreground="{DynamicResource Accent}" />
                       <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="This PC" Style="{StaticResource SectionLabel}" />
+            <ItemsControl ItemsSource="{Binding Drives}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
+                          CommandParameter="{Binding Path}" ToolTip="{Binding Path}"
+                          Command="{Binding DataContext.OpenPlaceCommand,
+                                    RelativeSource={RelativeSource AncestorType=Window}}">
+                    <StackPanel>
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource Glyph}" Text="&#xEDA2;" Foreground="{DynamicResource FgMuted}" />
+                        <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <ProgressBar Style="{StaticResource DriveBar}" Margin="24,5,4,2"
+                                   Value="{Binding UsedFraction, Mode=OneWay, FallbackValue=0}" />
+                      <TextBlock Text="{Binding CapacityText}" Margin="24,0,4,2"
+                                 Style="{StaticResource SideNote}" />
                     </StackPanel>
-                    <ProgressBar Style="{StaticResource DriveBar}" Margin="24,5,4,2"
-                                 Value="{Binding UsedFraction, Mode=OneWay, FallbackValue=0}" />
-                  </StackPanel>
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
-      </ScrollViewer>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
 
       <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="Transparent" />
 
+      <!-- The one opaque surface in the window. Text over a wallpaper reads at whatever contrast
+           the wallpaper happens to have, so the backdrop stops at the edge of the list. -->
       <Border Grid.Column="2" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
               BorderThickness="1,1,0,0" CornerRadius="4,0,0,0" ClipToBounds="True">
         <Grid>
-          <ListView x:Name="List" ItemsSource="{Binding Rows}" ItemContainerStyle="{StaticResource Row}"
-                    Background="Transparent" BorderThickness="0" SelectionMode="Extended"
+          <ListView x:Name="List" ItemsSource="{Binding Rows}" Style="{StaticResource FileList}"
+                    SelectionMode="Extended"
                     IsTextSearchEnabled="True" TextSearch.TextPath="Name" AllowDrop="True"
-                    VirtualizingStackPanel.IsVirtualizing="True"
-                    VirtualizingStackPanel.VirtualizationMode="Recycling"
-                    ScrollViewer.CanContentScroll="True"
-                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
                     SelectionChanged="OnSelectionChanged"
                     MouseDoubleClick="OnListDoubleClick"
                     PreviewMouseLeftButtonDown="OnListMouseDown"
@@ -324,44 +554,18 @@
                 <MenuItem Header="Delete" Command="{Binding DeleteCommand}" InputGestureText="Del" />
                 <MenuItem Header="Delete permanently" Command="{Binding DeletePermanentlyCommand}" InputGestureText="Shift+Del" />
                 <Separator />
-                <MenuItem Header="New folder" Command="{Binding NewFolderCommand}" InputGestureText="Ctrl+Shift+N" />
+                <MenuItem Header="New" ItemsSource="{Binding NewItems}">
+                  <MenuItem.ItemContainerStyle>
+                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                      <Setter Property="Header" Value="{Binding Label}" />
+                      <Setter Property="InputGestureText" Value="{Binding Gesture}" />
+                      <Setter Property="Command" Value="{Binding Command}" />
+                      <Setter Property="CommandParameter" Value="{Binding}" />
+                    </Style>
+                  </MenuItem.ItemContainerStyle>
+                </MenuItem>
               </ContextMenu>
             </ListView.ContextMenu>
-
-            <ListView.View>
-              <GridView AllowsColumnReorder="False">
-                <GridViewColumn Header="Name" HeaderTemplate="{StaticResource NameHeaderTemplate}" Width="380">
-                  <GridViewColumn.CellTemplate>
-                    <DataTemplate>
-                      <StackPanel x:Name="Cell" Orientation="Horizontal">
-                        <Image Width="16" Height="16" Margin="0,0,10,0" Source="{Binding Icon}"
-                               RenderOptions.BitmapScalingMode="HighQuality" />
-                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
-                      <DataTemplate.Triggers>
-                        <DataTrigger Binding="{Binding IsHidden}" Value="True">
-                          <Setter TargetName="Cell" Property="Opacity" Value="0.55" />
-                        </DataTrigger>
-                      </DataTemplate.Triggers>
-                    </DataTemplate>
-                  </GridViewColumn.CellTemplate>
-                </GridViewColumn>
-
-                <GridViewColumn Header="Size" HeaderTemplate="{StaticResource SizeHeaderTemplate}" Width="100">
-                  <GridViewColumn.CellTemplate>
-                    <DataTemplate>
-                      <TextBlock Text="{Binding SizeText}" HorizontalAlignment="Right" Margin="0,0,10,0" />
-                    </DataTemplate>
-                  </GridViewColumn.CellTemplate>
-                </GridViewColumn>
-
-                <GridViewColumn Header="Kind" HeaderTemplate="{StaticResource KindHeaderTemplate}" Width="140"
-                                DisplayMemberBinding="{Binding KindText}" />
-                <GridViewColumn Header="Modified" HeaderTemplate="{StaticResource ModifiedHeaderTemplate}" Width="170"
-                                DisplayMemberBinding="{Binding ModifiedText}" />
-              </GridView>
-            </ListView.View>
           </ListView>
 
           <TextBlock Text="{Binding ListMessage}" HorizontalAlignment="Center" VerticalAlignment="Center"

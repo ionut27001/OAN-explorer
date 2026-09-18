@@ -1,0 +1,115 @@
+using Oan.App.ViewModels;
+using Oan.Core.FileSystem;
+using Xunit;
+
+namespace Oan.Tests;
+
+public class PlaceViewModelTests
+{
+    const long Gb = 1024L * 1024 * 1024;
+
+    static PlaceViewModel Drive(long? free, long? total, bool available = true) =>
+        new(new Place
+        {
+            Name = "Local Disk (C:)", Path = @"C:\", Kind = PlaceKind.Drive,
+            Available = available, FreeBytes = free, TotalBytes = total,
+        });
+
+    static PlaceViewModel Folder() =>
+        new(new Place { Name = "Documents", Path = @"C:\Users\x\Documents", Kind = PlaceKind.Folder });
+
+    [Fact]
+    public void A_drive_says_how_much_of_how_much()
+    {
+        Assert.Equal("10 GB free of 100 GB", Drive(10 * Gb, 100 * Gb).CapacityText);
+    }
+
+    [Fact]
+    public void A_drive_that_is_not_ready_is_an_em_dash_and_never_zero()
+    {
+        var drive = Drive(null, null, available: false);
+
+        Assert.Equal("—", drive.CapacityText);
+        Assert.False(drive.Available);
+        Assert.Null(drive.UsedFraction);
+    }
+
+    [Fact]
+    public void Half_an_answer_is_no_answer()
+    {
+        Assert.Equal("—", Drive(10 * Gb, null).CapacityText);
+        Assert.Equal("—", Drive(null, 100 * Gb).CapacityText);
+    }
+
+    [Fact]
+    public void A_full_drive_still_reads_as_a_measurement()
+    {
+        Assert.Equal("0 bytes free of 100 GB", Drive(0, 100 * Gb).CapacityText);
+    }
+
+    [Fact]
+    public void A_folder_nobody_has_measured_shows_nothing_at_all()
+    {
+        Assert.Equal("", Folder().SizeText);
+    }
+
+    [Fact]
+    public void A_folder_being_measured_says_so()
+    {
+        var folder = Folder();
+        folder.Measuring();
+
+        Assert.Equal("…", folder.SizeText);
+    }
+
+    [Fact]
+    public void A_measured_folder_shows_its_size()
+    {
+        var folder = Folder();
+        folder.Measured(new FolderSizeResult { Path = folder.Path, Bytes = 4096 });
+
+        Assert.Equal("4 KB", folder.SizeText);
+    }
+
+    [Fact]
+    public void An_empty_folder_and_an_unreadable_one_do_not_read_the_same()
+    {
+        var empty = Folder();
+        empty.Measured(new FolderSizeResult { Path = empty.Path, Bytes = 0 });
+
+        var unreadable = Folder();
+        unreadable.Measured(FolderSizeResult.Unknown(unreadable.Path));
+
+        Assert.Equal("0 bytes", empty.SizeText);
+        Assert.Equal("—", unreadable.SizeText);
+    }
+
+    [Fact]
+    public void A_total_that_is_missing_a_denied_branch_is_shown_as_a_floor()
+    {
+        var folder = Folder();
+        folder.Measured(new FolderSizeResult { Path = folder.Path, Bytes = 4096, Skipped = 1 });
+
+        Assert.Equal("≥ 4 KB", folder.SizeText);
+        Assert.Contains("not counted", folder.Tip);
+    }
+
+    [Fact]
+    public void A_junction_left_unfollowed_makes_the_number_a_floor_too()
+    {
+        var folder = Folder();
+        folder.Measured(new FolderSizeResult { Path = folder.Path, Bytes = 4096, NotFollowed = 1 });
+
+        Assert.Equal("≥ 4 KB", folder.SizeText);
+    }
+
+    [Fact]
+    public void The_tooltip_says_which_of_the_states_this_is()
+    {
+        var folder = Folder();
+        Assert.Contains("not measured", folder.Tip);
+
+        folder.Measured(FolderSizeResult.Unknown(folder.Path));
+        Assert.Contains("could not be read", folder.Tip);
+    }
+}

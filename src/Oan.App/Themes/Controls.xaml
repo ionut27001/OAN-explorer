@@ -76,6 +76,47 @@
     </Style.Triggers>
   </Style>
 
+  <!-- One of a set: the mark of the size is its shape, so the group reads at a glance and needs
+       no text in a bar that is already full. -->
+  <Style x:Key="Segment" TargetType="RadioButton">
+    <Setter Property="AutomationProperties.Name"
+            Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
+    <Setter Property="Width" Value="30" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover}" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Selected}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- Acrylic is a blur of whatever window is behind, so chrome drawn straight onto it has no
+       idea how bright its own background is: measured over a white window, the muted status text
+       came out at 1.31:1. This lays a scrim under the bars that carry text, in that one mode.
+       Mica is a tint of the wallpaper alone and does not move, so it is left clear. -->
+  <Style x:Key="ChromeBar" TargetType="Border">
+    <Setter Property="Background" Value="Transparent" />
+    <Style.Triggers>
+      <DataTrigger Binding="{Binding ChromeOverAcrylic}" Value="True">
+        <Setter Property="Background" Value="{DynamicResource Scrim}" />
+      </DataTrigger>
+    </Style.Triggers>
+  </Style>
+
   <Style TargetType="TextBox">
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
     <Setter Property="Background" Value="{DynamicResource FieldBg}" />
@@ -242,6 +283,34 @@
     </Setter>
   </Style>
 
+  <!-- The grid counterpart of Row. The panel gives every tile the same box, so this one stretches
+       into it instead of carrying a size of its own. -->
+  <Style x:Key="Tile" TargetType="ListViewItem">
+    <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ListViewItem">
+          <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Margin="3">
+            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Selected}" />
+              <Setter Property="Foreground" Value="{DynamicResource SelectedFg}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style TargetType="ContextMenu">
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
     <Setter Property="Template">
@@ -265,15 +334,38 @@
           <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
             <Grid>
               <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="18" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1" Margin="28,0,0,0" VerticalAlignment="Center"
+              <TextBlock x:Name="Check" Text="&#xE73E;" FontSize="12" Visibility="Collapsed"
+                         FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" />
+              <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
+                                VerticalAlignment="Center" />
+              <TextBlock Grid.Column="2" Margin="28,0,0,0" VerticalAlignment="Center"
                          Text="{TemplateBinding InputGestureText}" Foreground="{DynamicResource FgMuted}" />
+              <!-- A MenuItem with children draws nothing of them without this: the items live in
+                   a popup the template has to provide. -->
+              <TextBlock x:Name="Arrow" Grid.Column="2" Text="&#xE76C;" FontSize="10" Visibility="Collapsed"
+                         Margin="28,0,0,0" VerticalAlignment="Center"
+                         FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                         Foreground="{DynamicResource FgMuted}" />
+              <Popup x:Name="PART_Popup" Placement="Right" HorizontalOffset="-4" AllowsTransparency="True"
+                     Focusable="False" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="4" Padding="4">
+                  <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                </Border>
+              </Popup>
             </Grid>
           </Border>
           <ControlTemplate.Triggers>
+            <Trigger Property="HasItems" Value="True">
+              <Setter TargetName="Arrow" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+            </Trigger>
             <Trigger Property="IsHighlighted" Value="True">
               <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover}" />
             </Trigger>

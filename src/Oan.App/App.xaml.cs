@@ -1,4 +1,5 @@
 using System.Windows;
+using Oan.App.Platform;
 using Oan.App.ViewModels;
 using Oan.Core.Operations;
 
@@ -18,6 +19,6 @@ public partial class App : Application
             args.Handled = true;
         };
 
-        new MainWindow(new MainViewModel(new ShellFileOperations())).Show();
+        new MainWindow(new MainViewModel(new ShellFileOperations(), Settings.Load(Settings.DefaultPath))).Show();
     }
 }

@@ -15,6 +15,9 @@
   <SolidColorBrush x:Key="SelectedFg" Color="#FFFFFF" />
   <SolidColorBrush x:Key="ScrollThumb" Color="#6B6B6B" />
   <SolidColorBrush x:Key="ScrollThumbHover" Color="#9A9A9A" />
+  <!-- Laid over the chrome when the backdrop is acrylic; see ChromeBar. -->
+  <SolidColorBrush x:Key="Scrim" Color="#CC000000" />
+
   <SolidColorBrush x:Key="FieldBg" Color="#333333" />
 
 </ResourceDictionary>

@@ -30,12 +30,26 @@ public partial class MainWindow : Window
             foreach (var row in rows) List.SelectedItems.Add(row);
         };
 
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.IsDetails)) ApplyViewMode();
+        };
+
+        ApplyViewMode();
+
         Loaded += (_, _) =>
         {
             vm.Start();
             List.Focus();
         };
     }
+
+    /// <summary>
+    /// A ListView refuses a GridView that is already in use, and a View that comes from a style is
+    /// re-applied every time one of its triggers re-evaluates — which the ListView reads as the
+    /// same view being handed to it twice. So this one property is set here instead.
+    /// </summary>
+    private void ApplyViewMode() => List.View = _vm.IsDetails ? (ViewBase)FindResource("DetailsView") : null;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -44,15 +58,35 @@ public partial class MainWindow : Window
         _vm.OwnerHandle = WindowEffects.Handle(this);
         Theme.Follow(Application.Current, this);
 
-        // Mica only shows through where WPF paints nothing, so the window itself stops
-        // painting a background once the backdrop is in place.
-        if (WindowEffects.TryMica(this)) Background = Brushes.Transparent;
+        _vm.ApplyBackdrop = ApplyBackdrop;
+        _vm.BackdropSupported = ApplyBackdrop(_vm.Backdrop);
+    }
+
+    /// <summary>
+    /// A backdrop only shows through where WPF paints nothing, so the window stops painting a
+    /// background once one is in place — and starts again the moment Windows refuses, because a
+    /// transparent window with no backdrop behind it draws as untinted white.
+    /// </summary>
+    private bool ApplyBackdrop(Backdrop choice)
+    {
+        var applied = WindowEffects.TryBackdrop(this, choice);
+
+        if (applied && choice != Backdrop.Solid) Background = Brushes.Transparent;
+        else SetResourceReference(BackgroundProperty, "WindowBg");
+
+        return applied;
     }
 
     protected override void OnActivated(EventArgs e)
     {
         base.OnActivated(e);
         _vm.RefreshClipboardState();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        _vm.Shutdown();
     }
 
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
@@ -131,12 +165,19 @@ public partial class MainWindow : Window
             _vm.SortCommand.Execute(sort);
     }
 
-    private void OnSortButtonClick(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// A toolbar button whose menu is its content. Right-click already opens it; this is the left.
+    /// The menu is hung from the button's right edge, because these buttons live at the right edge
+    /// of the window and a menu dropped from their left corner opens off the side of it.
+    /// </summary>
+    private void OnMenuButtonClick(object sender, RoutedEventArgs e)
     {
-        if (SortButton.ContextMenu is not { } menu) return;
+        if (sender is not Button { ContextMenu: { } menu } button) return;
 
-        menu.PlacementTarget = SortButton;
-        menu.Placement = PlacementMode.Bottom;
+        menu.PlacementTarget = button;
+        menu.Placement = PlacementMode.Custom;
+        menu.CustomPopupPlacementCallback = (popup, target, _) =>
+            [new CustomPopupPlacement(new Point(target.Width - popup.Width, target.Height), PopupPrimaryAxis.Horizontal)];
         menu.IsOpen = true;
     }
 

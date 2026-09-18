@@ -27,8 +27,9 @@ public static class ShellIcons
     private static readonly Dictionary<int, nint> ImageLists = [];
 
     /// <summary>
-    /// The icon for <paramref name="path"/> at roughly <paramref name="size"/> pixels. The
-    /// bitmap comes back at the nearest shell image-list size; let WPF scale it.
+    /// The icon for <paramref name="path"/> at roughly <paramref name="size"/> pixels. The shell
+    /// holds four image lists — 16, 32, 48 and 256 — and <paramref name="size"/> snaps up to one
+    /// of them; ask for another number and WPF scales what comes back.
     /// </summary>
     /// <remarks>
     /// Folders, executables and shortcuts are read from the item itself, so a cache miss blocks
@@ -97,7 +98,8 @@ public static class ShellIcons
                     return null;
             }
 
-            var list = SystemImageList(size);
+            var which = ImageListFor(size);
+            var list = SystemImageList(which);
             if (list == 0) return null;
 
             var icon = Native.ImageList_GetIcon(list, info.iIcon, Native.ILD_TRANSPARENT);
@@ -105,8 +107,15 @@ public static class ShellIcons
 
             try
             {
-                var image = Imaging.CreateBitmapSourceFromHIcon(icon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                BitmapSource image = Imaging.CreateBitmapSourceFromHIcon(icon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                 image.Freeze();
+
+                if (which == Native.SHIL_JUMBO)
+                {
+                    image = Unpad(image);
+                    image.Freeze();
+                }
+
                 return image;
             }
             finally
@@ -122,13 +131,56 @@ public static class ShellIcons
         }
     }
 
-    private static nint SystemImageList(int size)
+    /// <summary>
+    /// The jumbo list pads rather than scales: an item with no 256px asset comes back as a 256px
+    /// bitmap with its small icon drawn at the origin on transparent space, which renders as a
+    /// speck floating in an empty box. Crop back to the box the drawing fills, keeping the icon's
+    /// own padding, so the caller gets the smaller icon and scales it like any other.
+    /// </summary>
+    private static BitmapSource Unpad(BitmapSource image)
     {
-        var which =
-            size <= 16 ? Native.SHIL_SMALL :
-            size <= 32 ? Native.SHIL_LARGE :
-            size <= 48 ? Native.SHIL_EXTRALARGE : Native.SHIL_JUMBO;
+        var drawn = DrawnExtent(image);
+        var box = drawn <= 16 ? 16 : drawn <= 32 ? 32 : drawn <= 48 ? 48 : image.PixelWidth;
 
+        // Nothing drawn at all, or real 256px art: hand back what the shell gave us.
+        if (drawn == 0 || box >= image.PixelWidth) return image;
+
+        return new CroppedBitmap(image, new Int32Rect(0, 0, box, box));
+    }
+
+    /// <summary>The side of the square at the origin that contains every non-transparent pixel.</summary>
+    private static int DrawnExtent(BitmapSource image)
+    {
+        var source = image.Format == PixelFormats.Bgra32
+            ? image
+            : new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
+
+        int width = source.PixelWidth, height = source.PixelHeight, stride = width * 4;
+        var pixels = new byte[stride * height];
+        source.CopyPixels(pixels, stride, 0);
+
+        var extent = 0;
+        for (var y = 0; y < height; y++)
+        {
+            var row = y * stride;
+            for (var x = width - 1; x >= 0; x--)
+            {
+                if (pixels[row + x * 4 + 3] == 0) continue;
+                extent = Math.Max(extent, Math.Max(x + 1, y + 1));
+                break;
+            }
+        }
+
+        return extent;
+    }
+
+    private static int ImageListFor(int size) =>
+        size <= 16 ? Native.SHIL_SMALL :
+        size <= 32 ? Native.SHIL_LARGE :
+        size <= 48 ? Native.SHIL_EXTRALARGE : Native.SHIL_JUMBO;
+
+    private static nint SystemImageList(int which)
+    {
         lock (ImageLists)
         {
             if (ImageLists.TryGetValue(which, out var cached)) return cached;

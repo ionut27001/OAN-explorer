@@ -21,14 +21,14 @@ internal static class IconLoader
         thread.Start();
     }
 
-    public static void Load(string path, bool isDirectory, Action<ImageSource?> done) =>
-        Queue.Add(new Request(path, isDirectory, done));
+    public static void Load(string path, bool isDirectory, int size, Action<ImageSource?> done) =>
+        Queue.Add(new Request(path, isDirectory, size, done));
 
     private static void Pump()
     {
-        foreach (var (path, isDirectory, done) in Queue.GetConsumingEnumerable())
+        foreach (var (path, isDirectory, size, done) in Queue.GetConsumingEnumerable())
         {
-            var icon = ShellIcons.Get(path, isDirectory);
+            var icon = ShellIcons.Get(path, isDirectory, size);
             var dispatcher = Application.Current?.Dispatcher;
 
             if (dispatcher is null) done(icon);
@@ -36,5 +36,5 @@ internal static class IconLoader
         }
     }
 
-    private sealed record Request(string Path, bool IsDirectory, Action<ImageSource?> Done);
+    private sealed record Request(string Path, bool IsDirectory, int Size, Action<ImageSource?> Done);
 }

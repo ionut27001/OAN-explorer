@@ -9,5 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Oan.Core\Oan.Core.csproj" />
+    <InternalsVisibleTo Include="Oan.Tests" />
   </ItemGroup>
 </Project>
