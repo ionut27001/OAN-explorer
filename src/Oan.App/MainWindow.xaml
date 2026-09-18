@@ -529,6 +529,7 @@
                     PreviewMouseLeftButtonDown="OnListMouseDown"
                     PreviewMouseRightButtonDown="OnListRightButtonDown"
                     PreviewMouseMove="OnListMouseMove"
+                    PreviewMouseLeftButtonUp="OnListMouseUp"
                     ContextMenuOpening="OnListContextMenuOpening"
                     DragOver="OnListDragOver"
                     Drop="OnListDrop"

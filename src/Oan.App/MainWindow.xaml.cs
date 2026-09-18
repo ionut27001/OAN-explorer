@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Oan.App.Controls;
 using Oan.App.Platform;
 using Oan.App.ViewModels;
 using Oan.Core.Shell;
@@ -15,6 +16,7 @@ namespace Oan.App;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
+    private readonly BandSelect _band;
     private Point _pressed;
     private bool _mayDrag;
 
@@ -22,6 +24,7 @@ public partial class MainWindow : Window
     {
         _vm = vm;
         InitializeComponent();
+        _band = new BandSelect(List);
 
         DataContext = vm;
         vm.AskName = (title, suggestion) => PromptWindow.Ask(this, title, suggestion);
@@ -185,7 +188,13 @@ public partial class MainWindow : Window
     {
         _pressed = e.GetPosition(this);
         _mayDrag = RowAt(e.OriginalSource) is not null;
+
+        // Empty space starts a selection rectangle; a row starts a drag. The two cannot both
+        // own the gesture, and pressing on a row is how you drag files out.
+        if (!_mayDrag) _band.Begin(e);
     }
+
+    private void OnListMouseUp(object sender, MouseButtonEventArgs e) => _band.End();
 
     private void OnListRightButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -232,6 +241,12 @@ public partial class MainWindow : Window
 
     private void OnListMouseMove(object sender, MouseEventArgs e)
     {
+        if (_band.Dragging)
+        {
+            _band.Move(e);
+            return;
+        }
+
         if (!_mayDrag || e.LeftButton != MouseButtonState.Pressed) return;
 
         var moved = e.GetPosition(this) - _pressed;
