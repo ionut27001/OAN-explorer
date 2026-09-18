@@ -1,5 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Shell icons are handed to the UI as WPF ImageSource. -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- UseWPF switches to the desktop SDK's implicit usings, which drop these two. -->
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+  </ItemGroup>
 </Project>

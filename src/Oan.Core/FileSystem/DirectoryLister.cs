@@ -25,7 +25,14 @@ public static class DirectoryLister
         if (string.IsNullOrWhiteSpace(path))
             return DirectoryListing.Failed(path, "No folder was given.");
         if (!Directory.Exists(path))
-            return DirectoryListing.Failed(path, "This folder no longer exists.");
+            return DirectoryListing.Failed(path, File.Exists(path)
+                ? "That is a file, not a folder."
+                : "This folder no longer exists.");
+
+        // Before the loop, not only inside it: an empty folder never enters the loop, so a
+        // request that was cancelled before it started would otherwise come back as a clean
+        // listing of nothing.
+        ct.ThrowIfCancellationRequested();
 
         var entries = new List<FileEntry>(256);
 
@@ -71,8 +78,16 @@ public static class DirectoryLister
         private readonly FileAttributes _skip;
         private bool _produced;
 
+        // AttributesToSkip must be cleared: it defaults to Hidden|System and is applied by the
+        // base enumerator BEFORE ShouldIncludeEntry runs, so leaving it made ShowHidden=true a
+        // setting that was read and had no effect. All filtering happens in one place below.
         public Enumerator(string path, bool showHidden)
-            : base(path, new EnumerationOptions { IgnoreInaccessible = false, RecurseSubdirectories = false })
+            : base(path, new EnumerationOptions
+            {
+                IgnoreInaccessible = false,
+                RecurseSubdirectories = false,
+                AttributesToSkip = 0,
+            })
             => _skip = showHidden ? 0 : FileAttributes.Hidden | FileAttributes.System;
 
         public int Skipped { get; private set; }

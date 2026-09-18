@@ -1,0 +1,20 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <SolidColorBrush x:Key="WindowBg" Color="#202020" />
+  <SolidColorBrush x:Key="Surface" Color="#282828" />
+  <SolidColorBrush x:Key="Fg" Color="#F0F0F0" />
+  <SolidColorBrush x:Key="FgMuted" Color="#A8A8A8" />
+  <SolidColorBrush x:Key="FgDim" Color="#7A7A7A" />
+  <SolidColorBrush x:Key="Border" Color="#3C3C3C" />
+  <SolidColorBrush x:Key="Accent" Color="#4CC2FF" />
+  <SolidColorBrush x:Key="Warning" Color="#FF8A8A" />
+  <SolidColorBrush x:Key="Hover" Color="#18FFFFFF" />
+  <SolidColorBrush x:Key="Pressed" Color="#28FFFFFF" />
+  <SolidColorBrush x:Key="Selected" Color="#0F4676" />
+  <SolidColorBrush x:Key="SelectedFg" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="ScrollThumb" Color="#6B6B6B" />
+  <SolidColorBrush x:Key="ScrollThumbHover" Color="#9A9A9A" />
+  <SolidColorBrush x:Key="FieldBg" Color="#333333" />
+
+</ResourceDictionary>

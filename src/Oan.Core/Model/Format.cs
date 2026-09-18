@@ -16,6 +16,7 @@ public static class Format
         if (bytes is null) return "—";
         if (bytes < 0) return "—";
         if (bytes == 0) return "0 bytes";
+        if (bytes == 1) return "1 byte";
 
         double value = bytes.Value;
         var unit = 0;
