@@ -25,9 +25,26 @@ public sealed class History
     public string? Back() => CanGoBack ? _entries[--_index] : null;
     public string? Forward() => CanGoForward ? _entries[++_index] : null;
 
+    /// <summary>The containing folder, or null when there is none above this one.</summary>
     public static string? Parent(string path)
     {
-        var parent = Directory.GetParent(path.TrimEnd(Path.DirectorySeparatorChar));
-        return parent?.FullName;
+        if (string.IsNullOrWhiteSpace(path)) return null;
+
+        // "C:" without a separator is DRIVE-RELATIVE: Windows resolves it against the
+        // process's working directory, so Directory.GetParent("C:") answers with wherever the
+        // process happens to be. Up from a drive root would then jump somewhere unrelated.
+        if (!Path.IsPathFullyQualified(path)) return null;
+
+        var root = Path.GetPathRoot(path);
+        if (string.IsNullOrEmpty(root)) return null;
+
+        var separators = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
+        var trimmed = path.TrimEnd(separators);
+
+        // Already at "C:\" or at a UNC share root — GetParent would climb out of the namespace
+        // and invent a local path from "\\server\share".
+        if (trimmed.Length <= root.TrimEnd(separators).Length) return null;
+
+        return Directory.GetParent(trimmed)?.FullName;
     }
 }
