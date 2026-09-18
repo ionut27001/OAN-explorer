@@ -11,9 +11,17 @@ Oan.slnx
 
 Build and run:
 
-```
+```bash
 dotnet build
 dotnet run --project src/Oan.App
+```
+
+Tests. The first is the normal run; the second is a finishing step, taken once a mechanism works
+— a line limit going red halfway through building one gets in the way of building it.
+
+```bash
+dotnet test
+dotnet test --filter "Category=Shape"
 ```
 
 ## Two rules the code follows

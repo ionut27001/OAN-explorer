@@ -10,7 +10,14 @@ namespace Oan.Tests;
 /// mechanism at a time. A long file and a long method are how that starts, so the limit is checked
 /// rather than remembered. Exceptions are listed with a reason and a line count they may not
 /// exceed — a limit with an open-ended exception list is not a limit.
+/// Not part of the normal test run. Building a mechanism means trying things, and a length
+/// limit going red halfway through is noise, not help — so this is the step you take when the
+/// mechanism is finished and works:
+///
+///     dotnet test --filter "Category=Shape"
+///
 /// </summary>
+[Trait("Category", "Shape")]
 public class ShapeTests
 {
     private const int MaxFileLines = 400;

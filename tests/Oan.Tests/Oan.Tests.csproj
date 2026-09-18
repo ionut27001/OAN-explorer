@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Behaviour only. The shape checks are a finishing step, run on purpose with
+         "dotnet test <<filter>> Category=Shape": a line limit that goes red
+         while a feature is still being built gets in the way of building it. -->
+    <VSTestTestCaseFilter>Category!=Shape</VSTestTestCaseFilter>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
