@@ -5,6 +5,7 @@ using System.Windows.Input;
 using Oan.App.Platform;
 using Oan.Core.FileSystem;
 using Oan.Core.Model;
+using Oan.Core.Search;
 using Oan.Core.Navigation;
 using Oan.Core.Operations;
 using Oan.Core.Shell;
@@ -28,6 +29,13 @@ public sealed class MainViewModel : Observable
     private readonly History _history = new();
     private readonly SizeQueue _folderSizes;
     private CancellationTokenSource? _load;
+    private CancellationTokenSource? _search;
+    private SearchTally _tally = new();
+    private bool _inSearch;
+    private bool _searchContents;
+    private bool _searchRegex;
+    private bool _searchCase;
+    private string? _searchError;
 
     private DirectoryListing _listing = new() { Path = "", Entries = [] };
     private IReadOnlyList<EntryViewModel> _rows = [];
@@ -76,6 +84,9 @@ public sealed class MainViewModel : Observable
         BackdropCommand = new RelayCommand(p => Backdrop = (Backdrop)p!);
         KindCommand = new RelayCommand(p => KindFilter = (FileKind)p!);
         ClearFiltersCommand = new RelayCommand(ClearFilters, () => Filtering);
+        SearchCommand = new RelayCommand(() => Run(SearchAsync), () => _filter.Trim().Length > 0 && CurrentPath.Length > 0);
+        StopSearchCommand = new RelayCommand(StopSearch, () => _search is not null);
+        EndSearchCommand = new RelayCommand(EndSearch, () => InSearch);
         MeasureSizesCommand = new RelayCommand(MeasureQuick, () => Quick.Count > 0);
 
         _newItems = [new NewItem("Folder", "Ctrl+Shift+N", NewItemCommand, null)];
@@ -123,6 +134,11 @@ public sealed class MainViewModel : Observable
     public ICommand BackdropCommand { get; }
     public ICommand KindCommand { get; }
     public ICommand ClearFiltersCommand { get; }
+
+    /// <summary>Enter in the search box: walk the tree instead of filtering the loaded rows.</summary>
+    public ICommand SearchCommand { get; }
+    public ICommand StopSearchCommand { get; }
+    public ICommand EndSearchCommand { get; }
     public ICommand MeasureSizesCommand { get; }
 
     public IReadOnlyList<EntryViewModel> Rows { get => _rows; private set => Set(ref _rows, value); }
@@ -150,6 +166,16 @@ public sealed class MainViewModel : Observable
         get => _filter;
         set { if (Set(ref _filter, value)) Rebuild(); }
     }
+
+    /// <summary>
+    /// Results mode. The list is showing hits from a walk, not the current folder, so anything
+    /// that reads _listing — the count, the empty-folder message, Up — has to know.
+    /// </summary>
+    public bool InSearch { get => _inSearch; private set { if (Set(ref _inSearch, value)) Announce(); } }
+
+    public bool SearchContents { get => _searchContents; set => Set(ref _searchContents, value); }
+    public bool SearchRegex { get => _searchRegex; set => Set(ref _searchRegex, value); }
+    public bool SearchCase { get => _searchCase; set => Set(ref _searchCase, value); }
 
     /// <summary>The second filter, and it stacks with the name: both set means both applied.</summary>
     public FileKind KindFilter
@@ -274,6 +300,14 @@ public sealed class MainViewModel : Observable
     {
         get
         {
+            if (InSearch)
+            {
+                var running = _search is not null;
+                var head = running ? $"Searching… {Rows.Count} found" : $"{Rows.Count} found";
+                var seen = $"  ·  {_tally.FilesSeen:N0} files in {_tally.FoldersSeen:N0} folders";
+                return head + seen + (_selection.Count > 0 ? $"  ·  {_selection.Count} selected" : "");
+            }
+
             if (Busy) return "Reading folder…";
             if (CurrentPath.Length == 0) return "";
 
@@ -292,6 +326,18 @@ public sealed class MainViewModel : Observable
         get
         {
             if (_notice is not null) return _notice;
+            if (_searchError is not null) return _searchError;
+
+            // Un rezultat incomplet nu se prezinta ca total.
+            if (InSearch && !_tally.Complete)
+            {
+                var parts = new List<string>();
+                if (_tally.Denied > 0) parts.Add($"{_tally.Denied} folder(s) denied");
+                if (_tally.Unreadable > 0) parts.Add($"{_tally.Unreadable} file(s) unreadable");
+                if (_tally.TooLarge > 0) parts.Add($"{_tally.TooLarge} too large to scan");
+                if (parts.Count > 0) return "Results are a floor, not a total — " + string.Join(", ", parts);
+            }
+
             if (_listing.Error is not null) return _listing.Error;
             return _listing.Skipped > 0 ? $"{_listing.Skipped} item(s) in this folder could not be read" : null;
         }
@@ -304,6 +350,7 @@ public sealed class MainViewModel : Observable
         {
             if (_listing.Error is not null) return _listing.Error;
             if (Rows.Count > 0 || CurrentPath.Length == 0) return null;
+            if (InSearch) return _search is null ? "Nothing matched." : null;
             return Filtering ? "No items match the filter." : "This folder is empty.";
         }
     }
@@ -404,6 +451,21 @@ public sealed class MainViewModel : Observable
 
     private async Task LoadAsync(string path)
     {
+        // Results belong to the folder the search started from, so opening another one ends it —
+        // otherwise the list would show hits from somewhere else with this folder's path above.
+        StopSearch();
+        _inSearch = false;
+
+        // The typed filter goes with it. It is a question about the folder you were in; carried
+        // over, the next folder reads as empty with nothing on screen to explain why. Set on the
+        // field rather than the property because the setter rebuilds against the OLD listing.
+        if (_filter.Length > 0)
+        {
+            _filter = "";
+            OnChanged(nameof(Filter));
+            OnChanged(nameof(Filtering));
+        }
+
         _load?.Cancel();
         var cts = new CancellationTokenSource();
         _load = cts;
@@ -448,6 +510,127 @@ public sealed class MainViewModel : Observable
             }
             cts.Dispose();
         }
+    }
+
+
+    /// <summary>
+    /// A recursive search from the current folder, as opposed to the box's filter, which only
+    /// hides rows already loaded. Hits arrive while the walk is still going: a search that only
+    /// answers at the end is unusable on a large tree.
+    /// </summary>
+    private async Task SearchAsync()
+    {
+        var term = _filter.Trim();
+        var root = CurrentPath;
+        if (term.Length == 0 || root.Length == 0) return;
+
+        var query = new SearchQuery
+        {
+            Root = root,
+            Name = SearchContents ? null : term,
+            NameMode = SearchRegex ? NameMatch.Regex : NameMatch.Substring,
+            Content = SearchContents ? term : null,
+            ContentIsRegex = SearchContents && SearchRegex,
+            CaseSensitive = SearchCase,
+            IncludeHidden = ShowHidden,
+        };
+
+        // A pattern that does not compile is an error, never a search that found nothing.
+        if (query.Invalid() is { } bad)
+        {
+            _searchError = bad;
+            OnChanged(nameof(WarningText));
+            return;
+        }
+
+        StopSearch();
+        var cts = new CancellationTokenSource();
+        _search = cts;
+        _searchError = null;
+        _tally = new SearchTally();
+        InSearch = true;
+        Selection = [];
+        Rows = [];
+
+        var engine = new FileSearch(query.SearchesContent ? new ContentMatcher(query) : null);
+        var batch = new List<EntryViewModel>(64);
+
+        try
+        {
+            await foreach (var hit in engine.RunAsync(query, cts.Token).ConfigureAwait(true))
+            {
+                batch.Add(new EntryViewModel(
+                    new FileEntry
+                    {
+                        Name = hit.Name,
+                        FullPath = hit.FullPath,
+                        Attributes = hit.Attributes,
+                        Size = hit.Size,
+                        Modified = hit.Modified,
+                    },
+                    IconSize));
+
+                // Appended in batches: one property change per hit would spend the whole search
+                // in layout on a folder that returns thousands.
+                if (batch.Count >= 64) Flush(batch, engine);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _searchError = ex.Message;
+        }
+        finally
+        {
+            if (_search == cts)
+            {
+                Flush(batch, engine);
+                _search = null;
+                _tally = engine.Tally;
+                Announce();
+            }
+            cts.Dispose();
+        }
+    }
+
+    private void Flush(List<EntryViewModel> batch, FileSearch engine)
+    {
+        if (batch.Count > 0)
+        {
+            Rows = [.. Rows, .. batch];
+            batch.Clear();
+        }
+
+        _tally = engine.Tally;
+        Announce();
+    }
+
+    /// <summary>Leaves results mode and reloads the folder the search started from.</summary>
+    private void EndSearch()
+    {
+        StopSearch();
+        if (!InSearch) return;
+
+        InSearch = false;
+        Filter = "";
+        Run(ReloadAsync);
+    }
+
+    private void StopSearch()
+    {
+        var running = _search;
+        _search = null;
+        running?.Cancel();
+        Announce();
+    }
+
+    private void Announce()
+    {
+        OnChanged(nameof(StatusText));
+        OnChanged(nameof(WarningText));
+        OnChanged(nameof(ListMessage));
     }
 
     private void Rebuild()

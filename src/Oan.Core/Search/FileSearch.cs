@@ -140,7 +140,7 @@ public sealed class FileSearch
         ContentResult found;
         try
         {
-            found = matcher.Match(candidate.Path, candidate.Size, ct);
+            found = matcher.Match(candidate.Path, candidate.Size ?? 0, ct);
         }
         // A file can vanish or be locked between the walk and the read. That is one line of the
         // tally, not the end of the search.
@@ -198,6 +198,7 @@ public sealed class FileSearch
         Name = candidate.Name,
         Size = candidate.Size,
         Modified = candidate.Modified,
+        Attributes = candidate.Attributes,
         Line = found.Line,
         Preview = found.Preview,
     };
@@ -209,7 +210,7 @@ public sealed class FileSearch
     }
 
     /// <summary>A file worth opening. Its size is the directory record's, never a guess.</summary>
-    readonly record struct Candidate(string Path, string Name, long Size, DateTime Modified);
+    readonly record struct Candidate(string Path, string Name, long? Size, DateTime Modified, FileAttributes Attributes);
 
     /// <summary>
     /// One pass over the whole tree. Every filter that can be answered from the directory
@@ -265,14 +266,16 @@ public sealed class FileSearch
             // the disk until the next match, which on a large tree can be never.
             ct.ThrowIfCancellationRequested();
 
-            if (entry.IsDirectory)
-            {
-                Interlocked.Increment(ref owner.folders);
-                return false;
-            }
+            if (entry.IsDirectory) Interlocked.Increment(ref owner.folders);
+            else Interlocked.Increment(ref owner.files);
+
             if (!query.IncludeHidden && (entry.Attributes & Concealed) != 0) return false;
 
-            Interlocked.Increment(ref owner.files);
+            // A folder is a result when the question is about names. It cannot be one when the
+            // question is about contents, because there is nothing inside a folder to read — and
+            // returning folders there would be a hit the user cannot explain.
+            if (entry.IsDirectory)
+                return !query.SearchesContent && name.Matches(entry.FileName);
 
             if (query.MinSize is { } min && entry.Length < min) return false;
             if (query.MaxSize is { } max && entry.Length > max) return false;
@@ -285,7 +288,8 @@ public sealed class FileSearch
         }
 
         protected override Candidate TransformEntry(ref FileSystemEntry entry) => new(
-            entry.ToFullPath(), entry.FileName.ToString(), entry.Length, entry.LastWriteTimeUtc.LocalDateTime);
+            entry.ToFullPath(), entry.FileName.ToString(), entry.IsDirectory ? null : entry.Length,
+            entry.LastWriteTimeUtc.LocalDateTime, entry.Attributes);
 
         /// <summary>
         /// Also called from the base constructor, when the root itself cannot be opened — our

@@ -57,6 +57,9 @@ public sealed record SearchHit
     public required string Name { get; init; }
     public required long? Size { get; init; }
     public required DateTime? Modified { get; init; }
+
+    /// <summary>From the directory record, so the list can draw a hit exactly as it draws a row.</summary>
+    public FileAttributes Attributes { get; init; }
     public int? Line { get; init; }
     public string? Preview { get; init; }
 }

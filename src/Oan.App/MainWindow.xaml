@@ -276,8 +276,16 @@
 
           <TextBox x:Name="SearchBox" Height="30" AutomationProperties.Name="Search this folder"
                    Padding="10,0,28,0"
-                   Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=120}" />
-          <TextBlock Text="Search this folder" Margin="10,0,0,0" VerticalAlignment="Center"
+                   Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=120}">
+            <!-- Typing filters what is already loaded; Enter walks the tree. The two are
+                 different questions and the placeholder says so, because a box labelled
+                 "search" that only hides loaded rows is the reason this was reported broken. -->
+            <TextBox.InputBindings>
+              <KeyBinding Key="Enter" Command="{Binding SearchCommand}" />
+              <KeyBinding Key="Escape" Command="{Binding EndSearchCommand}" />
+            </TextBox.InputBindings>
+          </TextBox>
+          <TextBlock Text="Filter here · Enter searches subfolders" Margin="10,0,0,0" VerticalAlignment="Center"
                      IsHitTestVisible="False" Foreground="{DynamicResource FgDim}">
             <TextBlock.Style>
               <Style TargetType="TextBlock">
