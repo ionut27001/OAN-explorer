@@ -3,7 +3,7 @@
 A Windows file manager. C# / .NET 10 / WPF.
 
 ```
-Oan.sln
+Oan.slnx
   src/Oan.Core     no UI, no WPF reference — listing, places, history, file operations
   src/Oan.App      the window: XAML, view models, shell hosting
   tests/Oan.Tests  xunit, against Oan.Core

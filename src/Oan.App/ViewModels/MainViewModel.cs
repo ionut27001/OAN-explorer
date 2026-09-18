@@ -30,6 +30,10 @@ public sealed class MainViewModel : Observable
     private readonly SizeQueue _folderSizes;
     private CancellationTokenSource? _load;
     private CancellationTokenSource? _search;
+    /// <summary>Hits are appended in batches: one notification per hit would spend the whole
+    /// search in layout on a folder that returns thousands.</summary>
+    private const int BatchSize = 64;
+
     private SearchTally _tally = new();
     private bool _inSearch;
     private bool _searchContents;
@@ -451,21 +455,7 @@ public sealed class MainViewModel : Observable
 
     private async Task LoadAsync(string path)
     {
-        // Results belong to the folder the search started from, so opening another one ends it —
-        // otherwise the list would show hits from somewhere else with this folder's path above.
-        StopSearch();
-        _inSearch = false;
-
-        // The typed filter goes with it. It is a question about the folder you were in; carried
-        // over, the next folder reads as empty with nothing on screen to explain why. Set on the
-        // field rather than the property because the setter rebuilds against the OLD listing.
-        if (_filter.Length > 0)
-        {
-            _filter = "";
-            OnChanged(nameof(Filter));
-            OnChanged(nameof(Filtering));
-        }
-
+        LeaveSearch();
         _load?.Cancel();
         var cts = new CancellationTokenSource();
         _load = cts;
@@ -485,19 +475,7 @@ public sealed class MainViewModel : Observable
 
             if (cts.Token.IsCancellationRequested) return;
 
-            _listing = listing;
-            if (sidebar.Quick is { } quick) ShowQuick(quick);
-            Drives = [.. sidebar.Drives.Select(d => new PlaceViewModel(d))];
-            FreeText = sidebar.Free is null ? "" : $"{Format.Size(sidebar.Free)} free";
-            Address = path;
-            EditingAddress = false;
-            Crumbs = BuildCrumbs(path);
-            TrackPlaces();
-            Rebuild();
-
-            OnChanged(nameof(CurrentPath));
-            OnChanged(nameof(ParentPath));
-            OnChanged(nameof(WarningText));
+            Show(path, listing, sidebar.Quick, sidebar.Drives, sidebar.Free);
         }
         catch (OperationCanceledException)
         {
@@ -521,28 +499,7 @@ public sealed class MainViewModel : Observable
     /// </summary>
     private async Task SearchAsync()
     {
-        var term = _filter.Trim();
-        var root = CurrentPath;
-        if (term.Length == 0 || root.Length == 0) return;
-
-        var query = new SearchQuery
-        {
-            Root = root,
-            Name = SearchContents ? null : term,
-            NameMode = SearchRegex ? NameMatch.Regex : NameMatch.Substring,
-            Content = SearchContents ? term : null,
-            ContentIsRegex = SearchContents && SearchRegex,
-            CaseSensitive = SearchCase,
-            IncludeHidden = ShowHidden,
-        };
-
-        // A pattern that does not compile is an error, never a search that found nothing.
-        if (query.Invalid() is { } bad)
-        {
-            _searchError = bad;
-            OnChanged(nameof(WarningText));
-            return;
-        }
+        if (BuildQuery() is not { } query) return;
 
         StopSearch();
         var cts = new CancellationTokenSource();
@@ -554,26 +511,14 @@ public sealed class MainViewModel : Observable
         Rows = [];
 
         var engine = new FileSearch(query.SearchesContent ? new ContentMatcher(query) : null);
-        var batch = new List<EntryViewModel>(64);
+        var batch = new List<EntryViewModel>(BatchSize);
 
         try
         {
             await foreach (var hit in engine.RunAsync(query, cts.Token).ConfigureAwait(true))
             {
-                batch.Add(new EntryViewModel(
-                    new FileEntry
-                    {
-                        Name = hit.Name,
-                        FullPath = hit.FullPath,
-                        Attributes = hit.Attributes,
-                        Size = hit.Size,
-                        Modified = hit.Modified,
-                    },
-                    IconSize));
-
-                // Appended in batches: one property change per hit would spend the whole search
-                // in layout on a folder that returns thousands.
-                if (batch.Count >= 64) Flush(batch, engine);
+                batch.Add(Row(hit));
+                if (batch.Count >= BatchSize) Flush(batch, engine);
             }
         }
         catch (OperationCanceledException)
@@ -595,6 +540,42 @@ public sealed class MainViewModel : Observable
             cts.Dispose();
         }
     }
+
+    /// <summary>The query, or null when there is nothing to ask or the pattern will not compile.</summary>
+    private SearchQuery? BuildQuery()
+    {
+        var term = _filter.Trim();
+        if (term.Length == 0 || CurrentPath.Length == 0) return null;
+
+        var query = new SearchQuery
+        {
+            Root = CurrentPath,
+            Name = SearchContents ? null : term,
+            NameMode = SearchRegex ? NameMatch.Regex : NameMatch.Substring,
+            Content = SearchContents ? term : null,
+            ContentIsRegex = SearchContents && SearchRegex,
+            CaseSensitive = SearchCase,
+            IncludeHidden = ShowHidden,
+        };
+
+        // A pattern that does not compile is an error, never a search that found nothing.
+        if (query.Invalid() is not { } bad) return query;
+
+        _searchError = bad;
+        OnChanged(nameof(WarningText));
+        return null;
+    }
+
+    private EntryViewModel Row(SearchHit hit) => new(
+        new FileEntry
+        {
+            Name = hit.Name,
+            FullPath = hit.FullPath,
+            Attributes = hit.Attributes,
+            Size = hit.Size,
+            Modified = hit.Modified,
+        },
+        IconSize);
 
     private void Flush(List<EntryViewModel> batch, FileSearch engine)
     {
@@ -632,6 +613,43 @@ public sealed class MainViewModel : Observable
         OnChanged(nameof(StatusText));
         OnChanged(nameof(WarningText));
         OnChanged(nameof(ListMessage));
+    }
+
+
+    /// <summary>
+    /// What opening a folder ends. Results belong to the folder the search started from, and the
+    /// typed filter is a question about the folder you were in — carried over, the next one reads
+    /// as empty with nothing on screen to explain why.
+    /// </summary>
+    private void LeaveSearch()
+    {
+        StopSearch();
+        _inSearch = false;
+
+        if (_filter.Length == 0) return;
+
+        // The field, not the property: the setter rebuilds against the listing still on screen.
+        _filter = "";
+        OnChanged(nameof(Filter));
+        OnChanged(nameof(Filtering));
+    }
+
+    private void Show(string path, DirectoryListing listing, IReadOnlyList<Place>? quick,
+                      IReadOnlyList<Place> drives, long? free)
+    {
+        _listing = listing;
+        if (quick is not null) ShowQuick(quick);
+        Drives = [.. drives.Select(d => new PlaceViewModel(d))];
+        FreeText = free is null ? "" : $"{Format.Size(free)} free";
+        Address = path;
+        EditingAddress = false;
+        Crumbs = BuildCrumbs(path);
+        TrackPlaces();
+        Rebuild();
+
+        OnChanged(nameof(CurrentPath));
+        OnChanged(nameof(ParentPath));
+        OnChanged(nameof(WarningText));
     }
 
     private void Rebuild()

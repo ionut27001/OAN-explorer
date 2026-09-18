@@ -32,6 +32,12 @@ public sealed record NewFileTemplate
 /// </summary>
 public static class ShellNew
 {
+    private static readonly NewFileTemplate[] BuiltIn =
+    [
+        new() { Label = "Text Document", Extension = ".txt", Source = NewFileSource.Empty },
+        new() { Label = "Markdown File", Extension = ".md", Source = NewFileSource.Empty },
+    ];
+
     public static IReadOnlyList<NewFileTemplate> Templates()
     {
         var found = new Dictionary<string, NewFileTemplate>(StringComparer.OrdinalIgnoreCase);
@@ -57,6 +63,12 @@ public static class ShellNew
         {
             // A registry we cannot read means an empty New menu, not a window that fails to open.
         }
+
+        // What the registry has is whatever Windows and its installed apps put there — and on a
+        // machine where the context menu has been cleaned up it can be almost nothing. Measured
+        // here: only .lnk had a ShellNew key, not even .txt. A New menu offering one entry is not
+        // worth opening, so these are always offered; the registry's own entry wins if it exists.
+        foreach (var built in BuiltIn) found.TryAdd(built.Extension, built);
 
         return [.. found.Values.OrderBy(t => t.Label, StringComparer.CurrentCultureIgnoreCase)];
     }
