@@ -57,10 +57,23 @@ public partial class MainWindow : Window
 
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.L || e.KeyboardDevice.Modifiers != ModifierKeys.Control) return;
+        var mods = e.KeyboardDevice.Modifiers;
 
-        BeginAddressEdit();
-        e.Handled = true;
+        // The address bar: Ctrl+L and Alt+D, both of which Explorer and every browser accept.
+        if ((e.Key == Key.L && mods == ModifierKeys.Control) ||
+            (e.Key == Key.D && mods == ModifierKeys.Alt))
+        {
+            BeginAddressEdit();
+            e.Handled = true;
+            return;
+        }
+
+        if ((e.Key == Key.F && mods == ModifierKeys.Control) || (e.Key == Key.F3 && mods == ModifierKeys.None))
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            e.Handled = true;
+        }
     }
 
     private void OnAddressBarClick(object sender, MouseButtonEventArgs e) => BeginAddressEdit();

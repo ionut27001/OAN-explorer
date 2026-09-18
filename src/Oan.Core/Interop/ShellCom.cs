@@ -63,6 +63,7 @@ internal interface IFileOperationProgressSink
 
 internal static class FileOperationFlags
 {
+    public const uint RenameOnCollision = 0x0008;
     public const uint AllowUndo = 0x0040;
     public const uint NoConfirmMkDir = 0x0200;
     public const uint WantNukeWarning = 0x4000;

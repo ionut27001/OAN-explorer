@@ -145,7 +145,8 @@
         </Border>
 
         <Grid Grid.Column="2" Width="210">
-          <TextBox Height="30" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=120}" />
+          <TextBox x:Name="SearchBox" Height="30" AutomationProperties.Name="Search this folder"
+                   Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=120}" />
           <TextBlock Text="Search this folder" Margin="10,0,0,0" VerticalAlignment="Center"
                      IsHitTestVisible="False" Foreground="{DynamicResource FgDim}">
             <TextBlock.Style>

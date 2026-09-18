@@ -9,6 +9,11 @@
   </Style>
 
   <Style x:Key="FlatButton" TargetType="ButtonBase">
+    <!-- Icon-only buttons have no text, so without this a screen reader announces "button"
+         and nothing else. Derived from the tooltip rather than set per button, so a new
+         button cannot ship unlabelled. -->
+    <Setter Property="AutomationProperties.Name"
+            Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Padding" Value="8,4" />
@@ -209,6 +214,9 @@
   </Style>
 
   <Style x:Key="Row" TargetType="ListViewItem">
+    <!-- The row itself carries no text, so without this a screen reader lands on it and
+         announces "data item". The columns are separate children; the name is what the row is. -->
+    <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
     <Setter Property="SnapsToDevicePixels" Value="True" />
     <Setter Property="Height" Value="28" />

@@ -192,6 +192,19 @@ public sealed class ShellFileOperations : IFileOperations
         }
     }
 
+    internal static bool IsPasteIntoOwnFolder(OperationRequest request)
+    {
+        if (request.Destination is null || request.Sources.Count == 0) return false;
+
+        var destination = Path.TrimEndingDirectorySeparator(Path.GetFullPath(request.Destination));
+        return request.Sources.All(source =>
+        {
+            var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(source)));
+            return parent is not null &&
+                   string.Equals(Path.TrimEndingDirectorySeparator(parent), destination, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
     private static uint FlagsFor(OperationRequest request)
     {
         const uint common = FileOperationFlags.NoConfirmMkDir
@@ -199,7 +212,20 @@ public sealed class ShellFileOperations : IFileOperations
             | FileOperationFlags.AddUndoRecord;
 
         if (request.Kind != OperationKind.Delete)
-            return common | FileOperationFlags.AllowUndo;
+        {
+            var flags = common | FileOperationFlags.AllowUndo;
+
+            // Copying into the folder the items already live in: without RenameOnCollision the
+            // shell finds the name taken, has nothing to ask, and returns success having done
+            // nothing at all — measured, no file and no message. Explorer answers this with
+            // "alpha - Copy.txt", and this is the flag that produces it. Only for Copy, and
+            // only same-folder: everywhere else the replace/skip dialog is the right answer,
+            // and silently renaming round a real conflict would hide it.
+            if (request.Kind == OperationKind.Copy && IsPasteIntoOwnFolder(request))
+                flags |= FileOperationFlags.RenameOnCollision;
+
+            return flags;
+        }
 
         // A permanent delete deliberately leaves FOF_NOCONFIRMATION unset: the shell's own
         // confirmation runs in another process and nothing here can spoof or suppress it.
