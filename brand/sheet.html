@@ -1,0 +1,66 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#12151b;color:#c9d1e0;font:13px "Segoe UI",sans-serif;padding:24px}
+h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7c879a;margin:26px 0 10px;font-weight:600}
+.row{display:flex;align-items:flex-end;gap:26px;padding:14px 16px;background:#1a1f28;border-radius:6px}
+.row.light{background:#eef1f6}
+.cell{text-align:center}
+.cell span{display:block;margin-top:6px;font-size:10px;color:#6b7686}
+.light .cell span{color:#6b7686}
+svg{display:block}
+</style></head><body>
+
+<!-- A: SANTINELA — inel intrerupt sus (postul de paza) + pupila -->
+<template id="A">
+<svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M165.2 48.3 A 88 88 0 1 1 90.8 48.3" stroke="CLR" stroke-width="44" stroke-linecap="butt"/>
+  <circle cx="128" cy="128" r="27" fill="CLR"/>
+</svg></template>
+
+<!-- B: OCHI — disc plin cu golul in forma de lentila (vesica) + pupila -->
+<template id="B">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" fill="CLR" d="M128 18a110 110 0 1 0 0 220 110 110 0 0 0 0-220Z
+    M48 128q80-64 160 0-80 64-160 0Z"/>
+  <circle cx="128" cy="128" r="26" fill="CLR"/>
+</svg></template>
+
+<!-- C: DIAFRAGMA — doua lame care se inchid, deschiderea e o vesica -->
+<template id="C">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <path fill="CLR" d="M128 18a110 110 0 0 1 110 110 110 110 0 0 1-110 110
+    c62-42 62-178 0-220Z"/>
+  <path fill="CLR" d="M128 18a110 110 0 0 0-110 110 110 110 0 0 0 110 110
+    c-62-42-62-178 0-220Z"/>
+</svg></template>
+
+<!-- D: TURN DE VEGHE — inel gros cu patru creneluri -->
+<template id="D">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" fill="CLR" d="M128 18a110 110 0 1 0 0 220 110 110 0 0 0 0-220Z
+    M128 62a66 66 0 1 1 0 132 66 66 0 0 1 0-132Z"/>
+  <rect x="112" y="6" width="32" height="34" fill="#0000" />
+  <g fill="#12151b">
+    <rect x="110" y="10" width="36" height="30"/><rect x="110" y="216" width="36" height="30"/>
+    <rect x="10" y="110" width="30" height="36"/><rect x="216" y="110" width="30" height="36"/>
+  </g>
+</svg></template>
+
+<script>
+const sizes=[16,20,32,48,128];
+const names={A:"A · santinela (inel intrerupt + pupila)",B:"B · ochi (gol tip lentila)",
+             C:"C · diafragma (doua lame)",D:"D · turn de veghe (creneluri)"};
+for(const k of ["A","B","C","D"]){
+  document.body.insertAdjacentHTML("beforeend","<h2>"+names[k]+"</h2>");
+  for(const [cls,clr] of [["","#e8edf6"],["light","#151922"]]){
+    const row=document.createElement("div"); row.className="row "+cls;
+    for(const s of sizes){
+      const c=document.createElement("div"); c.className="cell";
+      c.innerHTML=document.getElementById(k).innerHTML.replaceAll("CLR",clr)
+        .replace("<svg","<svg width="+s+" height="+s);
+      const lab=document.createElement("span"); lab.textContent=s+"px"; c.appendChild(lab);
+      row.appendChild(c);
+    }
+    document.body.appendChild(row);
+  }
+}
+</script></body></html>

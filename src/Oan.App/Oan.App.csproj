@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>oan.ico</ApplicationIcon>
     <AssemblyName>Oan</AssemblyName>
     <RootNamespace>Oan.App</RootNamespace>
   </PropertyGroup>

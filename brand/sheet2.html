@@ -1,0 +1,58 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#12151b;color:#c9d1e0;font:13px "Segoe UI",sans-serif;padding:24px}
+h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7c879a;margin:26px 0 10px;font-weight:600}
+.row{display:flex;align-items:flex-end;gap:26px;padding:14px 16px;background:#1a1f28;border-radius:6px}
+.row.light{background:#eef1f6}
+.cell{text-align:center}.cell span{display:block;margin-top:6px;font-size:10px;color:#6b7686}
+svg{display:block}
+</style></head><body>
+
+<!-- E: AMBRAZURA — inel gros, fanta verticala cu capat rotunjit (fereastra de tragere) -->
+<template id="E">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" fill="CLR" d="M128 16a112 112 0 1 0 0 224 112 112 0 0 0 0-224Z
+    M128 74c16 0 26 12 26 27v56c0 15-10 27-26 27s-26-12-26-27V101c0-15 10-27 26-27Z"/>
+</svg></template>
+
+<!-- F: AMBRAZURA CU PRAG — ca E, dar fanta se lateste jos (embrazura reala, evazata) -->
+<template id="F">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" fill="CLR" d="M128 16a112 112 0 1 0 0 224 112 112 0 0 0 0-224Z
+    M128 70c14 0 22 11 22 24v34l16 44c0 8-17 14-38 14s-38-6-38-14l16-44V94c0-13 8-24 22-24Z"/>
+</svg></template>
+
+<!-- G: SANTINELA IN PRAG — inel intrerupt sus, bara plina sta in deschizatura -->
+<template id="G">
+<svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M172.6 54.4 A 92 92 0 1 1 83.4 54.4" stroke="CLR" stroke-width="46"/>
+  <rect x="112" y="8" width="32" height="74" rx="16" fill="CLR"/>
+</svg></template>
+
+<!-- H: DIAFRAGMA DECALATA — doua lame rotite, deschiderea nu mai e simetrica -->
+<template id="H">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <g transform="rotate(-18 128 128)">
+    <path fill="CLR" d="M128 16a112 112 0 0 1 112 112 112 112 0 0 1-112 112c64-44 64-180 0-224Z"/>
+    <path fill="CLR" d="M128 16a112 112 0 0 0-112 112 112 112 0 0 0 112 112c-64-44-64-180 0-224Z"/>
+  </g>
+</svg></template>
+
+<script>
+const sizes=[16,20,32,48,128];
+const names={E:"E · ambrazura (fanta verticala in zid)",F:"F · ambrazura evazata",
+             G:"G · santinela in prag (bara in deschizatura)",H:"H · diafragma decalata"};
+for(const k of ["E","F","G","H"]){
+  document.body.insertAdjacentHTML("beforeend","<h2>"+names[k]+"</h2>");
+  for(const [cls,clr] of [["","#e8edf6"],["light","#151922"]]){
+    const row=document.createElement("div"); row.className="row "+cls;
+    for(const s of sizes){
+      const c=document.createElement("div"); c.className="cell";
+      c.innerHTML=document.getElementById(k).innerHTML.replaceAll("CLR",clr)
+        .replace("<svg","<svg width="+s+" height="+s);
+      const lab=document.createElement("span"); lab.textContent=s+"px"; c.appendChild(lab);
+      row.appendChild(c);
+    }
+    document.body.appendChild(row);
+  }
+}
+</script></body></html>

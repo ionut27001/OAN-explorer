@@ -1,0 +1,50 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#12151b;color:#c9d1e0;font:13px "Segoe UI",sans-serif;padding:24px}
+h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7c879a;margin:24px 0 8px;font-weight:600}
+.row{display:flex;align-items:flex-end;gap:24px;padding:12px 16px;background:#1a1f28;border-radius:6px}
+.row.light{background:#eef1f6;margin-top:6px}
+.cell{text-align:center}.cell span{display:block;margin-top:5px;font-size:10px;color:#6b7686}
+svg{display:block}
+</style></head><body>
+
+<!-- E1: fanta mai ingusta si mai inalta -->
+<template id="E1">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" fill="CLR" d="M128 16a112 112 0 1 0 0 224 112 112 0 0 0 0-224Z
+    M128 66c12 0 21 10 21 22v80c0 12-9 22-21 22s-21-10-21-22V88c0-12 9-22 21-22Z"/>
+</svg></template>
+
+<!-- E2: ambrazura reala — varf rotunjit sus, taiat drept jos -->
+<template id="E2">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" fill="CLR" d="M128 16a112 112 0 1 0 0 224 112 112 0 0 0 0-224Z
+    M107 88c0-12 9-22 21-22s21 10 21 22v102h-42V88Z"/>
+</svg></template>
+
+<!-- E3: fanta ingusta + inel cu talpa plata jos (santinela sta in picioare) -->
+<template id="E3">
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" fill="CLR" d="M128 16a112 112 0 1 0 0 224 112 112 0 0 0 0-224Z
+    M128 62c12 0 21 10 21 22v88c0 12-9 22-21 22s-21-10-21-22V84c0-12 9-22 21-22Z"/>
+  <rect x="86" y="228" width="84" height="16" rx="8" fill="CLR"/>
+</svg></template>
+
+<script>
+const sizes=[16,20,24,32,48,128];
+const names={E1:"E1 · fanta ingusta, capete rotunjite",E2:"E2 · ambrazura (varf sus, taiat jos)",
+             E3:"E3 · fanta + talpa"};
+for(const k of ["E1","E2","E3"]){
+  document.body.insertAdjacentHTML("beforeend","<h2>"+names[k]+"</h2>");
+  for(const [cls,clr] of [["","#e8edf6"],["light","#151922"]]){
+    const row=document.createElement("div"); row.className="row "+cls;
+    for(const s of sizes){
+      const c=document.createElement("div"); c.className="cell";
+      c.innerHTML=document.getElementById(k).innerHTML.replaceAll("CLR",clr)
+        .replace("<svg","<svg width="+s+" height="+s);
+      const lab=document.createElement("span"); lab.textContent=s+"px"; c.appendChild(lab);
+      row.appendChild(c);
+    }
+    document.body.appendChild(row);
+  }
+}
+</script></body></html>
