@@ -65,6 +65,19 @@ public sealed class SizeTree
 
     public string Name(int i) => new(_text, _at[i], _len[i]);
 
+    /// <summary>
+    /// The full path of one entry, built by walking up the parents. Built on demand rather than
+    /// kept: it is wanted for the one thing under the pointer, and keeping a path per entry is
+    /// what the packed names exist to avoid.
+    /// </summary>
+    public string PathOf(int i)
+    {
+        var parts = new Stack<string>();
+        for (var at = i; at >= 0; at = Parent[at]) parts.Push(Name(at));
+
+        return System.IO.Path.Combine([Root, .. parts]);
+    }
+
     public bool IsFolder(int i) => _folder[i];
 
     /// <summary>

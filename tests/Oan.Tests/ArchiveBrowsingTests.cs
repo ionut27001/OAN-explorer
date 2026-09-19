@@ -39,7 +39,9 @@ public class ArchiveBrowsingTests
 
     private static async Task Settle(MainViewModel vm)
     {
-        for (var i = 0; i < 120 && !vm.Archive.Active; i++) await Task.Delay(20);
+        // Waiting for it to happen, not timing it: on a busy machine the old two and a half
+        // seconds was the difference between a green suite and a red one.
+        for (var i = 0; i < 600 && !vm.Archive.Active; i++) await Task.Delay(20);
     }
 
     private static EntryViewModel Row(MainViewModel vm, string name) =>
@@ -108,7 +110,7 @@ public class ArchiveBrowsingTests
 
         // Leaving is immediate; reloading the folder behind it is not, so the wait is on the
         // rows arriving rather than on the flag that already flipped.
-        for (var i = 0; i < 150 && !vm.Rows.Any(r => r.Name == "sample.zip"); i++) await Task.Delay(20);
+        for (var i = 0; i < 600 && !vm.Rows.Any(r => r.Name == "sample.zip"); i++) await Task.Delay(20);
 
         Assert.False(vm.Archive.Active);
         Assert.Contains(vm.Rows, r => r.Name == "sample.zip");

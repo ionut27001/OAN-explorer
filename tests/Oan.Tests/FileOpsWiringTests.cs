@@ -119,6 +119,6 @@ public class FileOpsWiringTests
 
     private static async Task Settle(Records ops, OperationRequest? was = null)
     {
-        for (var i = 0; i < 100 && ReferenceEquals(ops.Last, was); i++) await Task.Delay(20);
+        for (var i = 0; i < 400 && ReferenceEquals(ops.Last, was); i++) await Task.Delay(20);
     }
 }

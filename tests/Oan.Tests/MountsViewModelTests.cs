@@ -12,7 +12,7 @@ namespace Oan.Tests;
 /// driven here: no window, no synthetic input. The one test that must attach a real image says
 /// so, and puts the machine back.
 /// </summary>
-[Collection(Mounting.Name)]
+[Collection(DiskBound.Name)]
 public class MountsViewModelTests
 {
     private const string Iso = @"C:\images\linux.iso";

@@ -54,7 +54,7 @@ public class ArchiveSortTests
         await vm.NavigateAsync(temp.Root);
         vm.Open(vm.Rows.Single(r => r.Name == "sample.zip"));
 
-        for (var i = 0; i < 150 && !vm.Archive.Active; i++) await Task.Delay(20);
+        for (var i = 0; i < 600 && !vm.Archive.Active; i++) await Task.Delay(20);
         Assert.True(vm.Archive.Active, "never got into the archive");
         return vm;
     }

@@ -45,6 +45,12 @@ public partial class MainWindow : Window
         // drawn once on arrival, while nothing has been measured, and never again.
         _vm.FolderSizes.Settled += Map.InvalidateVisual;
 
+        // A tile deeper than the listing is not one of its rows, so opening it means going to
+        // where it lives rather than acting on a selection that does not exist.
+        Map.OpenedPath += path =>
+        {
+            if (Paths.Holding(path) is { } folder) _ = _vm.NavigateAsync(folder);
+        };
         Map.Menu = List.ContextMenu;
         Map.Picked += row => { List.SelectedItems.Clear(); List.SelectedItems.Add(row); };
         _vm.Look.PropertyChanged += (_, e) =>

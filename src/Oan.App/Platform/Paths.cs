@@ -12,6 +12,13 @@ public sealed record Crumb(string Name, string Path);
 internal static class Paths
 {
     /// <summary>
+    /// The folder to show in order to reveal a path: itself if it is one, otherwise the folder
+    /// holding it. Null when there is nothing above it to show.
+    /// </summary>
+    public static string? Holding(string path) =>
+        Directory.Exists(path) ? path : Path.GetDirectoryName(path);
+
+    /// <summary>
     /// The address bar's trail, root first. The root shows as "C:\" rather than as its own name,
     /// which for a drive is the empty string.
     /// </summary>

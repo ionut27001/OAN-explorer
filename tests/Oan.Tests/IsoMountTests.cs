@@ -11,7 +11,7 @@ namespace Oan.Tests;
 /// same set of drive letters, nothing left in <see cref="IsoMount.Mounted"/>. A mount test that
 /// leaks a mount is worse than no test.
 /// </summary>
-[Collection(Mounting.Name)]
+[Collection(DiskBound.Name)]
 public class IsoMountTests
 {
     private static string TestIso => TestImage.Iso;
