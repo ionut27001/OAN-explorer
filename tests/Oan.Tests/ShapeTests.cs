@@ -42,7 +42,6 @@ public class ShapeTests
         ("src/Oan.Core/Shell/ContextMenu.cs", 430,
             "One mechanism whose steps only make sense in sequence."),
         ("src/Oan.App/MainWindow.xaml", 540, "One window's markup. XAML does not factor the way code does."),
-        ("src/Oan.App/Themes/Controls.xaml", 430, "Control templates for the whole app, in one dictionary."),
     ];
 
     private static IEnumerable<FileInfo> Sources() =>

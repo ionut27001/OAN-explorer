@@ -98,6 +98,13 @@ public sealed class MountsViewModel : Observable, IDisposable
 
     public string MountHeader => _selected is not null && Find(_selected) is not null ? "Unmount" : "Mount";
 
+    /// <summary>
+    /// The image OAN attached at this drive root, or null. Lets the drive itself carry Eject, so
+    /// a mounted image is one row in the sidebar instead of two saying the same thing.
+    /// </summary>
+    public MountViewModel? At(string driveRoot) =>
+        _images.FirstOrDefault(i => i.Root.Length > 0 && Same(i.Root, driveRoot));
+
     /// <summary>True only for images OAN attached: those are the only ones it will detach.</summary>
     public bool IsMounted(string isoPath) => _images.Any(i => Same(i.IsoPath, isoPath));
 

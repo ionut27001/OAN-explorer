@@ -15,6 +15,7 @@ public sealed class PlaceViewModel(Place place) : Observable
     private FolderSizeResult? _result;
     private SizeState _state = SizeState.Unmeasured;
     private bool _isCurrent;
+    private string? _image;
 
     /// <summary>
     /// True while the list is showing this place. Matched on the path, and by prefix for a
@@ -43,6 +44,16 @@ public sealed class PlaceViewModel(Place place) : Observable
     public string Path => place.Path;
     public bool Available => place.Available;
     public bool IsOptical => place.IsOptical;
+
+    /// <summary>The image OAN mounted here, or null — an optical drive with a real disc in it.</summary>
+    public string? Image
+    {
+        get => _image;
+        set { if (Set(ref _image, value)) OnChanged(nameof(IsOurs)); }
+    }
+
+    /// <summary>Only ours can be ejected; the Core refuses anything it did not attach.</summary>
+    public bool IsOurs => _image is not null;
     public double? UsedFraction => place.UsedFraction;
 
     /// <summary>Drives: "85.0 GB free of 465 GB". A drive that is not ready knows neither number.</summary>

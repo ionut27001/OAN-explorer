@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#1a1f28;color:#e8edf6;font:12px "Segoe UI",sans-serif;padding:18px}
+.g{display:inline-block;width:92px;text-align:center;margin:6px 2px}
+.s{font-family:"Segoe Fluent Icons","Segoe MDL2 Assets";font-size:26px;display:block;color:#4CC2FF}
+.c{color:#7c879a;font-size:10px;margin-top:3px}
+h3{font-size:11px;color:#7c879a;letter-spacing:.08em;text-transform:uppercase;margin:16px 0 4px}
+</style></head><body>
+<h3>candidati pentru disc optic / imagine montata</h3>
+<div id="out"></div>
+<script>
+const codes = ["E958","E7B8","EB50","E7F4","E774","EDA2","E88E","E8B7","E7AD","E9A9",
+               "EA6A","E93E","F158","E9D9","E961","E99A","EC59","F0B9","E7F1","E9CE"];
+document.getElementById("out").innerHTML = codes.map(c =>
+  `<div class="g"><span class="s">&#x${c};</span><span class="c">${c}</span></div>`).join("");
+</script></body></html>

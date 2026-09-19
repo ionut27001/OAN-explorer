@@ -7,6 +7,48 @@
   <UserControl.Resources>
     <BooleanToVisibilityConverter x:Key="Show" />
 
+    <Style x:Key="SideButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="8,5" />
+      <!-- IsCurrent lives on the row's data, which a ControlTemplate trigger cannot reach; Tag is
+           the one property that carries it in. -->
+      <Setter Property="Tag" Value="{Binding IsCurrent}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid>
+              <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                      Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+              </Border>
+              <!-- Where you are, said quietly. A filled block shouts it every time you look at the
+                   pane; a bar at the edge is enough to find and does not compete with the list.
+                   It is also a shape and not only a colour, which is the half of the signal that
+                   survives for someone who cannot tell these two hues apart. -->
+              <Border x:Name="Mark" Width="3" Height="16" CornerRadius="2" Opacity="0"
+                      HorizontalAlignment="Left" VerticalAlignment="Center"
+                      Background="{DynamicResource Accent}" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Pressed}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.35" />
+              </Trigger>
+              <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                <Setter TargetName="Mark" Property="Opacity" Value="1" />
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover}" />
+              </DataTrigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <Style x:Key="DriveBar" TargetType="ProgressBar">
       <Setter Property="Height" Value="4" />
       <Setter Property="Minimum" Value="0" />
@@ -76,66 +118,55 @@
         <ItemsControl ItemsSource="{Binding Places.Drives}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
-                      CommandParameter="{Binding Path}" ToolTip="{Binding Path}"
-                      Command="{Binding DataContext.OpenPlaceCommand,
-                                RelativeSource={RelativeSource AncestorType=UserControl}}">
-                <StackPanel>
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="DriveGlyph" Style="{StaticResource Glyph}" Text="&#xEDA2;"
-                               Foreground="{DynamicResource FgMuted}" />
-                    <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
-                  </StackPanel>
-                  <!-- A mounted image is always full, so its bar is a solid block saying nothing.
-                       The accent tint is what marks it as not one of the machine's own disks. -->
-                  <ProgressBar x:Name="Bar" Style="{StaticResource DriveBar}" Margin="24,5,4,2"
-                               Value="{Binding UsedFraction, Mode=OneWay, FallbackValue=0}" />
-                  <TextBlock Text="{Binding CapacityText}" Margin="24,0,4,2"
-                             Style="{StaticResource SideNote}" />
-                </StackPanel>
-              </Button>
+              <StackPanel>
+                <!-- A line, not a heading. The drives above are the machine's; below it is
+                     something the user mounted, and that is a different kind of thing. -->
+                <Border x:Name="Rule" Height="1" Margin="12,8,12,7" Visibility="Collapsed"
+                        Background="{DynamicResource Border}" />
+                <DockPanel>
+                  <Button x:Name="EjectButton" DockPanel.Dock="Right" Style="{StaticResource FlatButton}"
+                          Padding="6,1" ToolTip="Unmount" Visibility="Collapsed"
+                          CommandParameter="{Binding Image}"
+                          Command="{Binding DataContext.Mounts.UnmountCommand,
+                                    RelativeSource={RelativeSource AncestorType=UserControl}}">
+                    <TextBlock Text="Eject" FontSize="11" Foreground="{DynamicResource Accent}" />
+                  </Button>
+                  <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
+                          CommandParameter="{Binding Path}" ToolTip="{Binding Tip}"
+                          Command="{Binding DataContext.OpenPlaceCommand,
+                                    RelativeSource={RelativeSource AncestorType=UserControl}}">
+                    <StackPanel>
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="DriveGlyph" Style="{StaticResource Glyph}" Text="&#xEDA2;"
+                                   Foreground="{DynamicResource FgMuted}" />
+                        <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <!-- A mounted image is always full, so its bar is a solid block saying nothing. -->
+                      <ProgressBar x:Name="Bar" Style="{StaticResource DriveBar}" Margin="24,5,4,2"
+                                   Value="{Binding UsedFraction, Mode=OneWay, FallbackValue=0}" />
+                      <TextBlock Text="{Binding CapacityText}" Margin="24,0,4,2"
+                                 Style="{StaticResource SideNote}" />
+                    </StackPanel>
+                  </Button>
+                </DockPanel>
+              </StackPanel>
               <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsOptical}" Value="True">
                   <Setter TargetName="Bar" Property="Visibility" Value="Collapsed" />
+                  <Setter TargetName="Rule" Property="Visibility" Value="Visible" />
+                  <!-- A disc, not a drive platter. -->
+                  <Setter TargetName="DriveGlyph" Property="Text" Value="&#xE958;" />
                   <Setter TargetName="DriveGlyph" Property="Foreground" Value="{DynamicResource Accent}" />
+                </DataTrigger>
+                <!-- Eject only on an image OAN attached: the Core refuses to detach any other,
+                     and offering what will be refused is worse than not offering it. -->
+                <DataTrigger Binding="{Binding IsOurs}" Value="True">
+                  <Setter TargetName="EjectButton" Property="Visibility" Value="Visible" />
                 </DataTrigger>
               </DataTemplate.Triggers>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-
-        <StackPanel Visibility="{Binding Mounts.Any, Converter={StaticResource Show}}">
-          <TextBlock Text="Mounted" Style="{StaticResource SectionLabel}" />
-          <ItemsControl ItemsSource="{Binding Mounts.Images}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <DockPanel>
-                  <!-- Only images OAN attached are listed, so Eject is never offered for one the
-                       Core would refuse to detach — the user's own virtual disks stay theirs. -->
-                  <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Padding="6,1"
-                          ToolTip="Unmount" CommandParameter="{Binding IsoPath}"
-                          Command="{Binding DataContext.Mounts.UnmountCommand,
-                                    RelativeSource={RelativeSource AncestorType=UserControl}}">
-                    <TextBlock Text="Eject" FontSize="11" Foreground="{DynamicResource Accent}" />
-                  </Button>
-                  <Button Style="{StaticResource SideButton}" IsEnabled="{Binding HasLetter}"
-                          CommandParameter="{Binding Root}" ToolTip="{Binding Tip}"
-                          Command="{Binding DataContext.OpenPlaceCommand,
-                                    RelativeSource={RelativeSource AncestorType=UserControl}}">
-                    <DockPanel>
-                      <!-- An em dash until Windows gives the volume a letter. Never blank: a
-                           blank would read as a mount that worked and went somewhere. -->
-                      <TextBlock DockPanel.Dock="Right" Text="{Binding LetterText}" Margin="8,0,0,0"
-                                 Style="{StaticResource SideNote}" />
-                      <TextBlock Style="{StaticResource Glyph}" Text="&#xEDA2;" Foreground="{DynamicResource Accent}" />
-                      <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
-                  </Button>
-                </DockPanel>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
       </StackPanel>
     </ScrollViewer>
   </Border>

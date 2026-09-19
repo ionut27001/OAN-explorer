@@ -626,7 +626,7 @@ public sealed class MainViewModel : Observable
     {
         _listing = listing;
         if (quick is not null) Places.ShowQuick(quick);
-        Places.ShowDrives(drives);
+        Places.ShowDrives(drives, root => Mounts.At(root)?.IsoPath);
         Places.ShowFree(free);
         Address = path;
         EditingAddress = false;

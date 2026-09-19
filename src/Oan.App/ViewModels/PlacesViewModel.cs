@@ -38,8 +38,12 @@ public sealed class PlacesViewModel : Observable, IDisposable
         foreach (var place in Quick.Where(p => p.Available && !Same(p.Path, home))) Measure(place);
     }
 
-    public void ShowDrives(IReadOnlyList<Place> drives) =>
-        Drives = [.. drives.Select(d => new PlaceViewModel(d))];
+    public void ShowDrives(IReadOnlyList<Place> drives, Func<string, string?> imageAt)
+    {
+        var rows = drives.Select(d => new PlaceViewModel(d)).ToArray();
+        foreach (var row in rows.Where(r => r.IsOptical)) row.Image = imageAt(row.Path);
+        Drives = rows;
+    }
 
     public void ShowFree(long? bytes) =>
         FreeText = bytes is null ? "" : $"{Oan.Core.Model.Format.Size(bytes)} free";
