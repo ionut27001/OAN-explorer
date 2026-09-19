@@ -34,5 +34,10 @@ internal static class Theme
         // reference the palette keys through DynamicResource.
         app.Resources.MergedDictionaries[0] = new ResourceDictionary { Source = source };
         WindowEffects.UseDarkTitleBar(window, dark);
+
+        // The shell's context menus are drawn by the system, not by WPF, and they follow the
+        // process's preferred mode rather than the window's. Without this the app goes dark and
+        // every right-click opens a white menu.
+        DarkMenus.Apply(dark);
     }
 }
