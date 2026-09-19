@@ -103,8 +103,12 @@
        idea how bright its own background is: measured over a white window, the muted status text
        came out at 1.31:1. This lays a scrim under the bars that carry text, in that one mode.
        Mica is a tint of the wallpaper alone and does not move, so it is left clear. -->
+  <!-- One surface for everything below the tabs: the bars, the sidebar and the list are the same
+       brush as the selected tab, so the tab flows into the page instead of sitting on it. It is
+       opaque on purpose - translucent, the tab and the bar let different things through and land
+       a shade apart. The glass is all in the caption band above. -->
   <Style x:Key="ChromeBar" TargetType="Border">
-    <Setter Property="Background" Value="{DynamicResource Layer}" />
+    <Setter Property="Background" Value="{DynamicResource Surface}" />
   </Style>
 
   <Style TargetType="TextBox">

@@ -20,15 +20,22 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <!-- MinWidth because a tab holding a short name would otherwise be a pill barely
-                 wider than the word, adrift in an empty caption bar. Explorer's are this size
-                 whatever is in them, and that is what makes a strip read as a strip. -->
-            <Border x:Name="Chip" MinWidth="150" Height="30" Margin="0,0,2,0"
-                    shell:WindowChrome.IsHitTestVisibleInChrome="True"
-                    CornerRadius="6,6,0,0" Padding="10,0" Background="Transparent"
-                    MouseDown="OnTabMouseDown" MouseMove="OnTabMouseMove"
-                    AllowDrop="True" Drop="OnTabDrop" ToolTip="{Binding Path}">
-              <DockPanel LastChildFill="True">
+            <!-- Not a rounded box. The top corners curve in, the bottom two curve OUT, into the
+                 bar below - that is what makes the tab look like it rose out of the page rather
+                 than like a chip parked on it. A Border cannot flare outwards, so the bottom two
+                 corners are quarter discs drawn beside the body, in the same brush as the bar. -->
+            <Grid x:Name="Chip" MinWidth="160" Height="30" Margin="0,0,2,0" Background="Transparent"
+                  shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                  MouseDown="OnTabMouseDown" MouseMove="OnTabMouseMove"
+                  AllowDrop="True" Drop="OnTabDrop" ToolTip="{Binding Path}">
+              <Border x:Name="Body" Margin="8,0" CornerRadius="8,8,0,0" Background="Transparent" />
+              <Path x:Name="WingLeft" Width="8" Height="8" Visibility="Collapsed"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    Fill="{DynamicResource Surface}" Data="M 0,8 A 8,8 0 0 1 8,0 L 8,8 Z" />
+              <Path x:Name="WingRight" Width="8" Height="8" Visibility="Collapsed"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Fill="{DynamicResource Surface}" Data="M 0,0 A 8,8 0 0 1 8,8 L 0,8 Z" />
+              <DockPanel LastChildFill="True" Margin="18,0,14,0">
                 <Button x:Name="CloseChip" DockPanel.Dock="Right" Width="22" Height="22" Padding="0"
                         Style="{StaticResource FlatButton}" VerticalAlignment="Center"
                         ToolTip="Close tab (Ctrl+W)" CommandParameter="{Binding}"
@@ -41,7 +48,7 @@
                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center" Margin="0,0,6,0"
                            TextTrimming="CharacterEllipsis" />
               </DockPanel>
-            </Border>
+            </Grid>
             <DataTemplate.Triggers>
               <!-- The last tab cannot be closed, so it does not get a button that would do
                    nothing. An X that is there and inert is the defect this project hunts. -->
@@ -51,12 +58,14 @@
                 <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
               </DataTrigger>
               <Trigger SourceName="Chip" Property="IsMouseOver" Value="True">
-                <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Hover}" />
+                <Setter TargetName="Body" Property="Background" Value="{DynamicResource Hover}" />
               </Trigger>
               <!-- Last, so it outranks hover: the tab you are on should not change colour when
                    the pointer crosses it, which reads as it being about to do something. -->
               <DataTrigger Binding="{Binding IsActive}" Value="True">
-                <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Layer}" />
+                <Setter TargetName="Body" Property="Background" Value="{DynamicResource Surface}" />
+                <Setter TargetName="WingLeft" Property="Visibility" Value="Visible" />
+                <Setter TargetName="WingRight" Property="Visibility" Value="Visible" />
               </DataTrigger>
             </DataTemplate.Triggers>
           </DataTemplate>

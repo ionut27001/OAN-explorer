@@ -21,13 +21,6 @@
        it stays a step darker than the layer. -->
   <SolidColorBrush x:Key="Caption" Color="#66000000" />
 
-  <!-- The layer: everything below the tabs is painted with it, and so is the selected tab, which
-       is what makes the tab and the page read as one shape rather than a chip parked above a bar.
-       Translucent, so the backdrop still comes through; opaque enough that text over a bright
-       wallpaper stays readable, which the caption band above it does not have to carry. The alpha
-       is the one the acrylic scrim used, measured; the colour is Surface #282828 so the bars, the
-       selected tab and the file list all land on the same tone. -->
-  <SolidColorBrush x:Key="Layer" Color="#CC282828" />
 
   <SolidColorBrush x:Key="FieldBg" Color="#333333" />
 
