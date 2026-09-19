@@ -112,4 +112,44 @@ public class PlaceViewModelTests
         folder.Measured(FolderSizeResult.Unknown(folder.Path));
         Assert.Contains("could not be read", folder.Tip);
     }
+
+    /// <summary>
+    /// The sidebar used to draw one folder glyph for every place, so Desktop, Downloads and
+    /// Documents looked identical while Windows gives each its own. The icon has to be the
+    /// shell's, and it has to be a different one for different places.
+    /// </summary>
+    [Fact]
+    public void Different_places_get_different_icons_from_the_shell()
+    {
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        Assert.True(Directory.Exists(desktop) && Directory.Exists(pictures), "no profile to read");
+
+        var one = Icon(desktop);
+        var two = Icon(pictures);
+
+        Assert.NotNull(one);
+        Assert.NotNull(two);
+        Assert.NotEqual(Bytes(one!), Bytes(two!));
+    }
+
+    private static System.Windows.Media.ImageSource? Icon(string path)
+    {
+        var place = new PlaceViewModel(new Place { Name = "x", Path = path, Kind = PlaceKind.Folder });
+        _ = place.Icon;
+
+        for (var i = 0; i < 200 && place.Icon is null; i++) Thread.Sleep(20);
+        return place.Icon;
+    }
+
+    private static byte[] Bytes(System.Windows.Media.ImageSource source)
+    {
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(
+            (System.Windows.Media.Imaging.BitmapSource)source));
+
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
 }

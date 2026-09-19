@@ -1,3 +1,5 @@
+using System.Windows.Media;
+using Oan.App.Platform;
 using Oan.Core.FileSystem;
 using Oan.Core.Model;
 
@@ -7,6 +9,8 @@ namespace Oan.App.ViewModels;
 public sealed class PlaceViewModel(Place place) : Observable
 {
     private readonly SizeCell _cell = new();
+    private ImageSource? _icon;
+    private bool _asked;
     private bool _isCurrent;
     private string? _image;
 
@@ -31,6 +35,28 @@ public sealed class PlaceViewModel(Place place) : Observable
                 currentPath.TrimEnd(System.IO.Path.DirectorySeparatorChar),
                 Path.TrimEnd(System.IO.Path.DirectorySeparatorChar),
                 StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The shell's own icon for this place, which is the whole point: Desktop, Downloads,
+    /// Documents, Pictures, Music and Videos each have one in Windows, and a folder someone gave
+    /// a custom icon has one too. Drawing the same folder glyph for all of them threw that away.
+    /// Requested on first bind and arriving later, like a row's; until then the glyph shows.
+    /// </summary>
+    public ImageSource? Icon
+    {
+        get
+        {
+            if (_asked || Path.Length == 0) return _icon;
+
+            _asked = true;
+            IconLoader.Load(Path, isDirectory: true, 16, icon =>
+            {
+                _icon = icon;
+                OnChanged(nameof(Icon));
+            });
+            return null;
+        }
     }
 
     public string Name => place.Name;

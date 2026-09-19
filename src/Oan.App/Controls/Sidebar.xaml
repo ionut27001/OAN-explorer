@@ -106,10 +106,20 @@
                 <DockPanel>
                   <TextBlock DockPanel.Dock="Right" Text="{Binding SizeText}" Margin="8,0,0,0"
                              Style="{StaticResource SideNote}" />
-                  <TextBlock Style="{StaticResource Glyph}" Text="&#xE8B7;" Foreground="{DynamicResource Accent}" />
+                  <Grid Width="16" Height="16">
+                    <TextBlock x:Name="Fallback" Style="{StaticResource Glyph}" Text="&#xE8B7;"
+                               Foreground="{DynamicResource Accent}" Visibility="Collapsed" />
+                    <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality" />
+                  </Grid>
                   <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
               </Button>
+              <DataTemplate.Triggers>
+                <!-- Until the shell answers, and for anything it has no icon for. -->
+                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                  <Setter TargetName="Fallback" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+              </DataTemplate.Triggers>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -137,8 +147,11 @@
                                     RelativeSource={RelativeSource AncestorType=UserControl}}">
                     <StackPanel>
                       <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="DriveGlyph" Style="{StaticResource Glyph}" Text="&#xEDA2;"
-                                   Foreground="{DynamicResource FgMuted}" />
+                        <Grid Width="16" Height="16">
+                          <TextBlock x:Name="DriveGlyph" Style="{StaticResource Glyph}" Text="&#xEDA2;"
+                                     Foreground="{DynamicResource FgMuted}" Visibility="Collapsed" />
+                          <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality" />
+                        </Grid>
                         <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
                       </StackPanel>
                       <!-- A mounted image is always full, so its bar is a solid block saying nothing. -->
@@ -151,6 +164,10 @@
                 </DockPanel>
               </StackPanel>
               <DataTemplate.Triggers>
+                <!-- Until the shell answers, and for a drive it has no icon for. -->
+                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                  <Setter TargetName="DriveGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsOptical}" Value="True">
                   <Setter TargetName="Bar" Property="Visibility" Value="Collapsed" />
                   <Setter TargetName="Rule" Property="Visibility" Value="Visible" />
