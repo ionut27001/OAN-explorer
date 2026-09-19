@@ -4,100 +4,132 @@
              xmlns:vm="clr-namespace:Oan.App.ViewModels"
              xmlns:ctl="clr-namespace:Oan.App.Controls"
              xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework">
-  <UserControl.Resources>
-    <BooleanToVisibilityConverter x:Key="Show" />
-  </UserControl.Resources>
 
   <!-- No ChromeBar here. The caption band is the one place the backdrop is left alone: paint it
        and the selected tab has nothing to stand out from, and the glass is gone from the one band
        that is meant to have it. -->
-  <!-- Clipped at its own edge: however many tabs there are, none of them reaches the window
-       buttons. The 8px on the left is where the first tab's flare goes. -->
-  <Border Padding="8,0,6,0" ClipToBounds="True" SizeChanged="OnStripResized">
-    <!-- A StackPanel, not a DockPanel: docking the button Right threw it to the far edge of the
-         caption band, half a window away from the tab it adds one to. -->
+  <Border Padding="0,0,6,0" ClipToBounds="True" SizeChanged="OnStripResized">
     <StackPanel Orientation="Horizontal">
-      <!-- MaxWidth is set in the code behind to whatever is left after the + button, which is
-           what stops the tabs from ever pushing it out of the window. -->
-      <ItemsControl x:Name="Strip" ItemsSource="{Binding Tabs.Items}">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate><ctl:TabBar /></ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate>
-            <!-- Not a rounded box. The top corners curve in; the bottom two curve OUT, away from
-                 the tab and down into the bar, tangent to it - that is what makes the tab look
-                 like it rose out of the page. A Border only curves inwards, so those two corners
-                 are drawn as paths, and they hang OUTSIDE the chip so the tabs can sit side by
-                 side rather than being held apart by their own flares. -->
-            <Grid x:Name="Chip" Height="30" Margin="0,0,2,0" Background="Transparent"
-                  shell:WindowChrome.IsHitTestVisibleInChrome="True"
-                  MouseDown="OnTabMouseDown" MouseMove="OnTabMouseMove"
-                  AllowDrop="True" Drop="OnTabDrop" ToolTip="{Binding Path}">
-              <Border x:Name="Hot" CornerRadius="8,8,0,0" Background="Transparent" />
-              <!-- Fill and flares fade as one shape, so switching tabs grows the new one out of
-                   the bar instead of snapping it there. -->
-              <Grid x:Name="Chosen" Opacity="0">
-                <Border CornerRadius="8,8,0,0" Background="{DynamicResource Surface}" />
-                <Path Width="8" Height="8" Margin="-8,0,0,0" Fill="{DynamicResource Surface}"
-                      HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                      Data="M 8,0 A 8,8 0 0 1 0,8 L 8,8 Z" />
-                <Path Width="8" Height="8" Margin="0,0,-8,0" Fill="{DynamicResource Surface}"
-                      HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                      Data="M 0,0 A 8,8 0 0 0 8,8 L 0,8 Z" />
-              </Grid>
-              <DockPanel LastChildFill="True" Margin="10,0">
-                <Button x:Name="CloseChip" DockPanel.Dock="Right" Width="22" Height="22" Padding="0"
-                        Style="{StaticResource FlatButton}" VerticalAlignment="Center"
-                        ToolTip="Close tab (Ctrl+W)" CommandParameter="{Binding}"
-                        Command="{Binding DataContext.Tabs.CloseTabCommand,
-                                  RelativeSource={RelativeSource AncestorType=UserControl}}">
-                  <TextBlock Style="{StaticResource Glyph}" FontSize="9" Text="&#xE711;" />
-                </Button>
-                <TextBlock Style="{StaticResource Glyph}" DockPanel.Dock="Left" Text="&#xE8B7;"
-                           FontSize="13" Margin="0,0,8,0" Foreground="{DynamicResource Accent}" />
-                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" Margin="0,0,6,0"
-                           TextTrimming="CharacterEllipsis" />
-              </DockPanel>
-            </Grid>
-            <DataTemplate.Triggers>
-              <!-- The last tab cannot be closed, so it does not get a button that would do
-                   nothing. An X that is there and inert is the defect this project hunts. -->
-              <DataTrigger Value="False"
-                           Binding="{Binding DataContext.Tabs.CanClose,
-                                     RelativeSource={RelativeSource AncestorType=UserControl}}">
-                <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
-              </DataTrigger>
-              <Trigger SourceName="Chip" Property="IsMouseOver" Value="True">
-                <Setter TargetName="Hot" Property="Background" Value="{DynamicResource SurfaceSoft}" />
-              </Trigger>
-              <!-- Last, so it outranks hover: the tab you are on should not change colour when
-                   the pointer crosses it, which reads as it being about to do something. -->
-              <DataTrigger Binding="{Binding IsActive}" Value="True">
-                <DataTrigger.EnterActions>
-                  <BeginStoryboard>
-                    <Storyboard>
-                      <DoubleAnimation Storyboard.TargetName="Chosen" Duration="0:0:0.14"
-                                       Storyboard.TargetProperty="Opacity" To="1" />
-                    </Storyboard>
-                  </BeginStoryboard>
-                </DataTrigger.EnterActions>
-                <DataTrigger.ExitActions>
-                  <BeginStoryboard>
-                    <Storyboard>
-                      <DoubleAnimation Storyboard.TargetName="Chosen" Duration="0:0:0.14"
-                                       Storyboard.TargetProperty="Opacity" To="0" />
-                    </Storyboard>
-                  </BeginStoryboard>
-                </DataTrigger.ExitActions>
-              </DataTrigger>
-            </DataTemplate.Triggers>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+      <!-- The rail only scrolls once the tabs are at their narrowest and still do not fit. Its
+           width is set in the code behind; inside a StackPanel it would otherwise be offered
+           infinite room, size itself to its contents and never scroll at all. -->
+      <ScrollViewer x:Name="Rail" HorizontalScrollBarVisibility="Hidden"
+                    VerticalScrollBarVisibility="Disabled" PreviewMouseWheel="OnRailWheel">
+        <!-- The 8px on each side is where the first and last flares go; without it the rail,
+             which clips to itself, would cut them off. -->
+        <ItemsControl x:Name="Strip" ItemsSource="{Binding Tabs.Items}" Margin="8,0,8,0">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><ctl:TabBar /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
 
+          <!-- The panel decides the widths, and it needs to know which tab is the selected one
+               without knowing what a tab is. This is how it is told. -->
+          <ItemsControl.ItemContainerStyle>
+            <Style TargetType="ContentPresenter">
+              <Setter Property="ctl:TabBar.Chosen" Value="{Binding IsActive}" />
+            </Style>
+          </ItemsControl.ItemContainerStyle>
+
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <!-- Not a rounded box. The top corners curve in; the bottom two curve OUT, away from
+                   the tab and down into the bar, tangent to it - that is what makes the tab look
+                   like it rose out of the page. A Border only curves inwards, so those two corners
+                   are drawn as paths, and they hang OUTSIDE the chip so the tabs can sit side by
+                   side rather than being held apart by their own flares. -->
+              <Grid x:Name="Chip" Height="30" Margin="0,0,2,0" Background="Transparent"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    MouseDown="OnTabMouseDown" MouseMove="OnTabMouseMove"
+                    AllowDrop="True" Drop="OnTabDrop" ToolTip="{Binding Path}">
+                <Border x:Name="Hot" CornerRadius="8,8,0,0" Background="Transparent" />
+                <!-- Fill and flares fade as one shape, so switching tabs grows the new one out of
+                     the bar instead of snapping it there. -->
+                <Grid x:Name="Chosen" Opacity="0">
+                  <Border CornerRadius="8,8,0,0" Background="{DynamicResource Surface}" />
+                  <Path Width="8" Height="8" Margin="-8,0,0,0" Fill="{DynamicResource Surface}"
+                        HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                        Data="M 8,0 A 8,8 0 0 1 0,8 L 8,8 Z" />
+                  <Path Width="8" Height="8" Margin="0,0,-8,0" Fill="{DynamicResource Surface}"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Data="M 0,0 A 8,8 0 0 0 8,8 L 0,8 Z" />
+                </Grid>
+
+                <Grid Margin="10,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock x:Name="Icon" Style="{StaticResource Glyph}" Text="&#xE8B7;"
+                             FontSize="13" Foreground="{DynamicResource Accent}" />
+                  <TextBlock x:Name="Title" Grid.Column="1" Text="{Binding Title}" Margin="8,0,6,0"
+                             VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <Button x:Name="CloseChip" Grid.Column="2" Width="22" Height="22" Padding="0"
+                          Style="{StaticResource FlatButton}" VerticalAlignment="Center"
+                          ToolTip="Close tab (Ctrl+W)" CommandParameter="{Binding}"
+                          Command="{Binding DataContext.Tabs.CloseTabCommand,
+                                    RelativeSource={RelativeSource AncestorType=UserControl}}">
+                    <TextBlock Style="{StaticResource Glyph}" FontSize="9" Text="&#xE711;" />
+                  </Button>
+                </Grid>
+              </Grid>
+
+              <DataTemplate.Triggers>
+                <!-- What is left of a tab once the strip is tight. The selected one is never
+                     narrowed this far, so it keeps its title and its close button throughout. -->
+                <DataTrigger Value="NoClose"
+                             Binding="{Binding (ctl:TabBar.Fit),
+                                       RelativeSource={RelativeSource AncestorType=ContentPresenter}}">
+                  <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+                <DataTrigger Value="IconOnly"
+                             Binding="{Binding (ctl:TabBar.Fit),
+                                       RelativeSource={RelativeSource AncestorType=ContentPresenter}}">
+                  <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
+                  <Setter TargetName="Title" Property="Visibility" Value="Collapsed" />
+                  <Setter TargetName="Icon" Property="Grid.ColumnSpan" Value="3" />
+                </DataTrigger>
+
+                <!-- The last tab cannot be closed, so it does not get a button that would do
+                     nothing. An X that is there and inert is the defect this project hunts. -->
+                <DataTrigger Value="False"
+                             Binding="{Binding DataContext.Tabs.CanClose,
+                                       RelativeSource={RelativeSource AncestorType=UserControl}}">
+                  <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+
+                <Trigger SourceName="Chip" Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Hot" Property="Background" Value="{DynamicResource SurfaceSoft}" />
+                </Trigger>
+
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                  <DataTrigger.EnterActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="Chosen" Duration="0:0:0.14"
+                                         Storyboard.TargetProperty="Opacity" To="1" />
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </DataTrigger.EnterActions>
+                  <DataTrigger.ExitActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="Chosen" Duration="0:0:0.14"
+                                         Storyboard.TargetProperty="Opacity" To="0" />
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </DataTrigger.ExitActions>
+                </DataTrigger>
+              </DataTemplate.Triggers>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <!-- Pulled back over the last flare on purpose: the flare is the tail of the tab curving
+           into the bar, and the + belongs right after the tab, not after the curve. -->
       <Button x:Name="Plus" Style="{StaticResource FlatButton}" Width="32" Height="30" Padding="0"
-              Margin="4,0,0,0" VerticalAlignment="Bottom" ToolTip="New tab (Ctrl+T)"
+              Margin="-4,0,0,0" VerticalAlignment="Bottom" ToolTip="New tab (Ctrl+T)"
               shell:WindowChrome.IsHitTestVisibleInChrome="True"
               Command="{Binding Tabs.NewTabCommand}">
         <TextBlock Style="{StaticResource Glyph}" FontSize="12" Text="&#xE710;" />

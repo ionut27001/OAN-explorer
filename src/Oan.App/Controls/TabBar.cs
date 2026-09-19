@@ -3,48 +3,112 @@ using System.Windows.Controls;
 
 namespace Oan.App.Controls;
 
+/// <summary>How much of a tab still fits at the width it was given.</summary>
+public enum TabFit
+{
+    Full,
+    NoClose,
+    IconOnly,
+}
+
 /// <summary>
-/// Lays tabs out the way a browser does: all the same width, wide while there are few and
-/// narrower as they pile up, down to a floor. A StackPanel let every tab keep its width, so past
-/// five of them the strip ran off its own end, under the window buttons, taking the + with it.
+/// The tab strip's layout, the way a browser does it. Tabs are all one width, wide while there
+/// are few and narrower as they pile up. Past the point where they would all be unreadable the
+/// selected one keeps enough room to be read and closed and the rest give way, shedding first
+/// their close button and then their title, until they are the icon alone.
+///
+/// The room comes from <see cref="RoomProperty"/> rather than from the measure constraint,
+/// because the strip sits in a scroll viewer and a scroll viewer offers infinite width.
 /// </summary>
 internal sealed class TabBar : Panel
 {
     internal const double Widest = 170;
-    internal const double Narrowest = 80;
+    internal const double Narrowest = 52;
+    internal const double ChosenLeast = 120;
+    internal const double KeepsClose = 90;
+    internal const double KeepsTitle = 70;
 
-    /// <summary>
-    /// Infinity means nobody has said how much room there is. The strip's width is put on the
-    /// items control by the code behind, so this is only the pass before that lands.
-    /// </summary>
-    internal static double Each(double room, int count) =>
-        count <= 0 ? 0
-        : double.IsInfinity(room) || double.IsNaN(room) ? Widest
-        : Math.Clamp(room / count, Narrowest, Widest);
+    /// <summary>Set on the strip; inherited down to this panel. NaN until the strip is sized.</summary>
+    public static readonly DependencyProperty RoomProperty = DependencyProperty.RegisterAttached(
+        "Room", typeof(double), typeof(TabBar),
+        new FrameworkPropertyMetadata(double.NaN,
+            FrameworkPropertyMetadataOptions.Inherits | FrameworkPropertyMetadataOptions.AffectsMeasure));
+
+    /// <summary>Set by the item container style from the tab's own IsActive.</summary>
+    public static readonly DependencyProperty ChosenProperty = DependencyProperty.RegisterAttached(
+        "Chosen", typeof(bool), typeof(TabBar),
+        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsParentMeasure));
+
+    /// <summary>Written by this panel, read by the tab template.</summary>
+    public static readonly DependencyProperty FitProperty = DependencyProperty.RegisterAttached(
+        "Fit", typeof(TabFit), typeof(TabBar), new FrameworkPropertyMetadata(TabFit.Full));
+
+    public static double GetRoom(DependencyObject o) => (double)o.GetValue(RoomProperty);
+    public static void SetRoom(DependencyObject o, double v) => o.SetValue(RoomProperty, v);
+    public static bool GetChosen(DependencyObject o) => (bool)o.GetValue(ChosenProperty);
+    public static void SetChosen(DependencyObject o, bool v) => o.SetValue(ChosenProperty, v);
+    public static TabFit GetFit(DependencyObject o) => (TabFit)o.GetValue(FitProperty);
+    public static void SetFit(DependencyObject o, TabFit v) => o.SetValue(FitProperty, v);
+
+    /// <summary>What each tab gets. Chosen is the selected tab's width, Other everyone else's.</summary>
+    internal static (double Chosen, double Other) Share(double room, int count, bool anyChosen)
+    {
+        if (count <= 0) return (0, 0);
+        if (double.IsNaN(room) || double.IsInfinity(room) || room <= 0) return (Widest, Widest);
+
+        var even = room / count;
+        if (even >= Widest) return (Widest, Widest);
+        if (even >= ChosenLeast || count == 1 || !anyChosen)
+        {
+            var same = Math.Max(even, Narrowest);
+            return (same, same);
+        }
+
+        return (ChosenLeast, Math.Max(Narrowest, (room - ChosenLeast) / (count - 1)));
+    }
+
+    internal static TabFit FitAt(double width) =>
+        width < KeepsTitle ? TabFit.IconOnly : width < KeepsClose ? TabFit.NoClose : TabFit.Full;
 
     protected override Size MeasureOverride(Size available)
     {
-        var each = Each(available.Width, InternalChildren.Count);
+        var (chosen, other) = Shares();
+        var total = 0.0;
         var height = 0.0;
 
         foreach (UIElement child in InternalChildren)
         {
-            child.Measure(new Size(each, available.Height));
+            var width = GetChosen(child) ? chosen : other;
+            SetFit(child, GetChosen(child) ? TabFit.Full : FitAt(width));
+
+            child.Measure(new Size(width, available.Height));
             height = Math.Max(height, child.DesiredSize.Height);
+            total += width;
         }
-        return new Size(each * InternalChildren.Count, height);
+        return new Size(total, height);
     }
 
     protected override Size ArrangeOverride(Size final)
     {
-        var each = Each(final.Width, InternalChildren.Count);
+        var (chosen, other) = Shares();
         var x = 0.0;
 
         foreach (UIElement child in InternalChildren)
         {
-            child.Arrange(new Rect(x, 0, each, final.Height));
-            x += each;
+            var width = GetChosen(child) ? chosen : other;
+            child.Arrange(new Rect(x, 0, width, final.Height));
+            x += width;
         }
         return final;
+    }
+
+    private (double Chosen, double Other) Shares()
+    {
+        var anyChosen = false;
+        foreach (UIElement child in InternalChildren)
+        {
+            if (GetChosen(child)) anyChosen = true;
+        }
+        return Share(GetRoom(this), InternalChildren.Count, anyChosen);
     }
 }
