@@ -27,18 +27,19 @@ public sealed class MainViewModel : Observable
     private readonly IFileOperations _ops;
     private readonly Settings _settings;
     private readonly History _history = new();
-    private readonly SizeQueue _folderSizes;
     private CancellationTokenSource? _load;
     /// <summary>Hits are appended in batches: one notification per hit would spend the whole
     /// search in layout on a folder that returns thousands.</summary>
     private const int BatchSize = 64;
 
+    // Ours, kept below the shell's own numbering so a pick says whose it is.
+    private const int MountId = 1;
+    private const int EjectId = 2;
+
     private DirectoryListing _listing = new() { Path = "", Entries = [] };
     private IReadOnlyList<EntryViewModel> _rows = [];
     private IReadOnlyList<EntryViewModel> _selection = [];
     private IReadOnlyList<Crumb> _crumbs = [];
-    private IReadOnlyList<PlaceViewModel> _quick = [];
-    private IReadOnlyList<PlaceViewModel> _drives = [];
     private IReadOnlyList<NewItem> _newItems;
     private string _address = "";
     private string _filter = "";
@@ -57,7 +58,6 @@ public sealed class MainViewModel : Observable
     {
         _ops = ops;
         _settings = settings;
-        _folderSizes = new SizeQueue(Measured);
         Mounts = mounts ?? new MountsViewModel();
         Mounts.Bind(path => Run(() => NavigateAsync(path)), Report, () => CurrentPath);
 
@@ -86,7 +86,7 @@ public sealed class MainViewModel : Observable
         StopSearchCommand = new RelayCommand(Search.Stop, () => Search.Running);
         EndSearchCommand = new RelayCommand(EndSearch, () => Search.Active);
         Search.Changed += Announce;
-        MeasureSizesCommand = new RelayCommand(MeasureQuick, () => Quick.Count > 0);
+        MeasureSizesCommand = new RelayCommand(Places.MeasureAll, () => Places.Quick.Count > 0);
 
         _newItems = [new NewItem("Folder", "Ctrl+Shift+N", NewItemCommand, null)];
         _ = LoadTemplatesAsync();
@@ -147,8 +147,7 @@ public sealed class MainViewModel : Observable
 
     public IReadOnlyList<EntryViewModel> Rows { get => _rows; private set => Set(ref _rows, value); }
     public IReadOnlyList<Crumb> Crumbs { get => _crumbs; private set => Set(ref _crumbs, value); }
-    public IReadOnlyList<PlaceViewModel> Quick { get => _quick; private set => Set(ref _quick, value); }
-    public IReadOnlyList<PlaceViewModel> Drives { get => _drives; private set => Set(ref _drives, value); }
+    public PlacesViewModel Places { get; } = new();
     public IReadOnlyList<NewItem> NewItems { get => _newItems; private set => Set(ref _newItems, value); }
 
     public string CurrentPath => _listing.Path;
@@ -399,10 +398,39 @@ public sealed class MainViewModel : Observable
     public void Shutdown()
     {
         _load?.Cancel();
-        _folderSizes.Dispose();
+        Places.Dispose();
 
         // An image still attached after OAN exits is litter on the user's machine.
         Mounts.Dispose();
+    }
+
+
+    /// <summary>
+    /// What OAN puts at the top of the system menu. Mount is here and not only on double-click
+    /// because the right-click menu is where people look for it, and on this machine the system's
+    /// own mount entry belongs to a handler that hangs.
+    /// </summary>
+    public IReadOnlyList<OwnMenuItem> OwnMenuItems()
+    {
+        var images = _selection.Where(r => MountsViewModel.IsImage(r.Entry.FullPath)).ToArray();
+        if (images.Length == 0) return [];
+
+        var mounted = images.All(r => Mounts.IsMounted(r.Entry.FullPath));
+        return [new OwnMenuItem(mounted ? EjectId : MountId, mounted ? "Eject" : "Mount")];
+    }
+
+    public void RunOwnMenuItem(int id)
+    {
+        var images = _selection
+            .Where(r => MountsViewModel.IsImage(r.Entry.FullPath))
+            .Select(r => r.Entry.FullPath)
+            .ToArray();
+
+        foreach (var image in images)
+        {
+            if (id == MountId) Run(() => Mounts.OpenAsync(image));
+            else if (id == EjectId) Mounts.UnmountCommand.Execute(image);
+        }
     }
 
     private Task DropAsync(IReadOnlyList<string> paths, bool move)
@@ -417,11 +445,10 @@ public sealed class MainViewModel : Observable
             .Where(p => !string.Equals(Path.GetDirectoryName(p), CurrentPath, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        if (incoming.Length == 0)
-        {
-            Notice = "Those items are already in this folder.";
-            return Task.CompletedTask;
-        }
+        // A drag that ends where it began is a cancelled gesture, not a failure. This is the one
+        // no-op the window is allowed to pass over in silence: the user asked for nothing, and an
+        // orange warning for a slipped mouse reads as something having gone wrong.
+        if (incoming.Length == 0) return Task.CompletedTask;
 
         return RunOperationAsync(new OperationRequest
         {
@@ -475,7 +502,8 @@ public sealed class MainViewModel : Observable
             // not come and go while the window is open, and rebuilding them would throw away every
             // size measured so far.
             var sidebar = await Task.Run(
-                () => (Free: FreeSpace(path), Quick: _quick.Count == 0 ? Places.Quick() : null, Drives: Places.Drives()),
+                () => (Free: FreeSpace(path), Quick: Places.NeedsQuick ? Oan.Core.FileSystem.Places.Quick() : null,
+                       Drives: Oan.Core.FileSystem.Places.Drives()),
                 cts.Token);
 
             if (cts.Token.IsCancellationRequested) return;
@@ -597,13 +625,13 @@ public sealed class MainViewModel : Observable
                       IReadOnlyList<Place> drives, long? free)
     {
         _listing = listing;
-        if (quick is not null) ShowQuick(quick);
-        Drives = [.. drives.Select(d => new PlaceViewModel(d))];
-        FreeText = free is null ? "" : $"{Format.Size(free)} free";
+        if (quick is not null) Places.ShowQuick(quick);
+        Places.ShowDrives(drives);
+        Places.ShowFree(free);
         Address = path;
         EditingAddress = false;
         Crumbs = BuildCrumbs(path);
-        TrackPlaces();
+        Places.Track(CurrentPath);
         Rebuild();
 
         OnChanged(nameof(CurrentPath));
@@ -680,41 +708,6 @@ public sealed class MainViewModel : Observable
         OnChanged(nameof(KindFilterText));
         OnChanged(nameof(KindFiltered));
         Rebuild();
-    }
-
-    /// <summary>Lights the sidebar entry the list is standing in, so the pane is not silent about where you are.</summary>
-    private void TrackPlaces()
-    {
-        foreach (var place in Quick) place.Track(CurrentPath);
-        foreach (var drive in Drives) drive.Track(CurrentPath);
-    }
-
-    private void ShowQuick(IReadOnlyList<Place> places)
-    {
-        Quick = [.. places.Select(p => new PlaceViewModel(p))];
-
-        // Everything but the profile itself. Measured on this machine it is 1.1 million files and
-        // 36 seconds, nearly all of it AppData, which is not a price for opening a window — so it
-        // stays blank until the user asks for it.
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        foreach (var place in Quick.Where(p => p.Available && !Same(p.Path, home)))
-            Measure(place);
-    }
-
-    private void MeasureQuick()
-    {
-        foreach (var place in Quick.Where(p => p.Available)) Measure(place);
-    }
-
-    private void Measure(PlaceViewModel place)
-    {
-        place.Measuring();
-        _folderSizes.Add(place.Path);
-    }
-
-    private void Measured(FolderSizeResult result)
-    {
-        if (Quick.FirstOrDefault(p => Same(p.Path, result.Path)) is { } place) place.Measured(result);
     }
 
     private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);

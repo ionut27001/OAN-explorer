@@ -254,7 +254,11 @@ public partial class MainWindow : Window
 
         try
         {
-            var shell = ShellContextMenu.Show(_vm.OwnerHandle, _vm.SelectedShellItems(), (int)point.X, (int)point.Y);
+            var own = _vm.OwnMenuItems();
+            var shell = ShellContextMenu.Show(_vm.OwnerHandle, _vm.SelectedShellItems(),
+                (int)point.X, (int)point.Y, own);
+
+            if (shell.OwnCommand != 0) { _vm.RunOwnMenuItem(shell.OwnCommand); return; }
             if (shell.Ran) _vm.RefreshCommand.Execute(null);
 
             // The shell had no menu for us, or the extension that owns these files never

@@ -11,7 +11,16 @@ namespace Oan.Core.Shell;
 /// <see cref="Failure"/> is the other way round: the menu was there, the user picked from it, and
 /// the verb itself said no — there is something to say, but nothing left to offer.
 /// </summary>
-public readonly record struct ShellMenuResult(bool Ran, string? Refusal, string? Failure = null);
+public readonly record struct ShellMenuResult(bool Ran, string? Refusal, string? Failure = null, int OwnCommand = 0);
+
+/// <summary>
+/// An entry OAN puts at the top of the shell's menu, above everything the system offers.
+///
+/// Mount belongs here rather than in a menu of our own: the user right-clicks once and expects
+/// one list. Ids are ours and stay below <c>FirstCommand</c>, so what comes back says plainly
+/// whether the shell should run it or we should.
+/// </summary>
+public readonly record struct OwnMenuItem(int Id, string Label);
 
 /// <summary>
 /// One item the menu is being shown for. Whether it is a folder comes from the listing the rows
@@ -27,7 +36,8 @@ public readonly record struct ShellItem(string Path, bool IsDirectory);
 /// </summary>
 public static class ShellContextMenu
 {
-    private const uint FirstCommand = 1;
+    /// <summary>The shell's ids start here; everything below is ours.</summary>
+    private const uint FirstCommand = 100;
     private const uint LastCommand = 0x7FFF;
 
     /// <summary>
@@ -60,7 +70,8 @@ public static class ShellContextMenu
     /// <summary>
     /// Shows the menu for <paramref name="items"/> at a screen point and runs the chosen command.
     /// </summary>
-    public static ShellMenuResult Show(nint owner, IReadOnlyList<ShellItem> items, int screenX, int screenY)
+    public static ShellMenuResult Show(nint owner, IReadOnlyList<ShellItem> items, int screenX, int screenY,
+        IReadOnlyList<OwnMenuItem>? own = null)
     {
         // CMF_CANRENAME is a promise to carry out the rename ourselves, which needs a shell view
         // to call back into. Without one the verb would be enabled and do nothing, so the flag
@@ -71,12 +82,12 @@ public static class ShellContextMenu
         if ((Native.GetKeyState(Native.VK_SHIFT) & 0x8000) != 0) flags |= Native.CMF_EXTENDEDVERBS;
 
         var paths = items.Select(item => item.Path).ToArray();
-        return Show(owner, items, screenX, screenY, () => Build(paths, flags));
+        return Show(owner, items, screenX, screenY, () => Build(paths, flags, own), own);
     }
 
     /// <summary>The same, with the part that loads third-party code handed in, so it can be faked.</summary>
     internal static ShellMenuResult Show(nint owner, IReadOnlyList<ShellItem> items, int screenX, int screenY,
-        Func<(Native.IContextMenu? Menu, nint Popup)> build)
+        Func<(Native.IContextMenu? Menu, nint Popup)> build, IReadOnlyList<OwnMenuItem>? own = null)
     {
         if (items.Count == 0) return default;
 
@@ -104,6 +115,10 @@ public static class ShellContextMenu
             var command = Track(owner, sta, menu, popup, screenX, screenY);
             // Nothing was picked: Escape, or a click beside the menu. Nothing to say about that.
             if (command <= 0) return default;
+
+            // One of ours. It never went near a shell extension, so a lost apartment does not
+            // apply to it.
+            if (command < FirstCommand) return new(false, null, null, command);
 
             // Something was picked, off a menu that was on screen and working, and the apartment
             // it lived in is gone. Answering that with silence is the click that does nothing.
@@ -143,7 +158,7 @@ public static class ShellContextMenu
     /// asking it — and every extension registered for these files — to fill a menu. This is the
     /// call that hangs on this machine, so it only ever runs on the STA thread.
     /// </summary>
-    internal static (Native.IContextMenu? Menu, nint Popup) Build(IReadOnlyList<string> paths, uint flags)
+    internal static (Native.IContextMenu? Menu, nint Popup) Build(IReadOnlyList<string> paths, uint flags, IReadOnlyList<OwnMenuItem>? own = null)
     {
         var pidls = new List<nint>(paths.Count);
         try
@@ -161,7 +176,18 @@ public static class ShellContextMenu
 
             var popup = Native.CreatePopupMenu();
             if (popup != 0 && menu.QueryContextMenu(popup, 0, FirstCommand, LastCommand, flags) >= 0)
+            {
+                // Inserted after the shell has filled the menu, at the top, so ours are the first
+                // thing under the cursor and the shell's numbering is untouched.
+                if (own is { Count: > 0 })
+                {
+                    Native.InsertMenuW(popup, 0, Native.MF_BYPOSITION | Native.MF_SEPARATOR, 0, null);
+                    for (var i = own.Count - 1; i >= 0; i--)
+                        Native.InsertMenuW(popup, 0, Native.MF_BYPOSITION, (nuint)own[i].Id, own[i].Label);
+                }
+
                 return (menu, popup);
+            }
 
             Release(menu, popup);
             return default;

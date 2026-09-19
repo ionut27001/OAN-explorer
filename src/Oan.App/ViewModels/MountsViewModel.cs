@@ -98,6 +98,9 @@ public sealed class MountsViewModel : Observable, IDisposable
 
     public string MountHeader => _selected is not null && Find(_selected) is not null ? "Unmount" : "Mount";
 
+    /// <summary>True only for images OAN attached: those are the only ones it will detach.</summary>
+    public bool IsMounted(string isoPath) => _images.Any(i => Same(i.IsoPath, isoPath));
+
     public static bool IsImage(string path) =>
         Extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 

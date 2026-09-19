@@ -31,8 +31,16 @@ public class ShapeTests
         // SearchViewModel and it is 904 now. The ceiling follows it down each time, so the only
         // direction this file can go is smaller. Still holding navigation, selection, clipboard,
         // file operations, the sidebar and settings — clipboard is the next one out.
-        ("src/Oan.App/ViewModels/MainViewModel.cs", 910,
-            "Several concerns still in one class; the ceiling ratchets down as they leave."),
+        ("src/Oan.App/ViewModels/MainViewModel.cs", 897,
+            "Several concerns still in one class; the ceiling ratchets down as they leave. " +
+            "Search and the sidebar have gone; file operations are the next."),
+
+        // Removed from this list once, when it briefly fitted, and back because OAN's own entries
+        // at the top of the menu cost eight lines. It stays: building the menu, the deadline, the
+        // modal loop, invoking the verb and remembering what hung are one flow that has to be
+        // read in order, and splitting it would scatter the reason each step is where it is.
+        ("src/Oan.Core/Shell/ContextMenu.cs", 430,
+            "One mechanism whose steps only make sense in sequence."),
         ("src/Oan.App/MainWindow.xaml", 540, "One window's markup. XAML does not factor the way code does."),
         ("src/Oan.App/Themes/Controls.xaml", 430, "Control templates for the whole app, in one dictionary."),
     ];

@@ -13,6 +13,13 @@ public sealed record Place
     /// <summary>False when the path is gone — a pinned folder that was deleted, an unmounted drive.</summary>
     public bool Available { get; init; } = true;
 
+    /// <summary>
+    /// A drive that is an optical device — which on this machine means a mounted image far more
+    /// often than a disc. It is not the same thing as a hard disk and must not look like one: its
+    /// capacity bar is always full, and "0 bytes free of 20 GB" is true and useless.
+    /// </summary>
+    public bool IsOptical { get; init; }
+
     /// <summary>Drives only. Null when the size could not be read, which is not the same as full.</summary>
     public long? TotalBytes { get; init; }
     public long? FreeBytes { get; init; }
@@ -95,8 +102,10 @@ public static class Places
         {
             long? total = null, free = null;
             var ready = false;
+            var optical = false;
             try
             {
+                optical = d.DriveType == DriveType.CDRom;
                 ready = d.IsReady;
                 if (ready) { total = d.TotalSize; free = d.AvailableFreeSpace; }
             }
@@ -110,6 +119,7 @@ public static class Places
                 Path = d.RootDirectory.FullName,
                 Kind = PlaceKind.Drive,
                 Available = ready,
+                IsOptical = optical,
                 TotalBytes = total,
                 FreeBytes = free,
             });

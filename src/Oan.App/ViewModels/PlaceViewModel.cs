@@ -42,10 +42,13 @@ public sealed class PlaceViewModel(Place place) : Observable
     public string Name => place.Name;
     public string Path => place.Path;
     public bool Available => place.Available;
+    public bool IsOptical => place.IsOptical;
     public double? UsedFraction => place.UsedFraction;
 
     /// <summary>Drives: "85.0 GB free of 465 GB". A drive that is not ready knows neither number.</summary>
-    public string CapacityText => Capacity(place.FreeBytes, place.TotalBytes);
+    public string CapacityText => place.IsOptical
+        ? place.TotalBytes is { } bytes ? $"disc image, {Format.Size(bytes)}" : "disc image"
+        : Capacity(place.FreeBytes, place.TotalBytes);
 
     public string SizeText => _state switch
     {

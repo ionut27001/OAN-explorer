@@ -419,7 +419,7 @@
     <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
             Padding="12,6" Style="{StaticResource ChromeBar}">
       <DockPanel>
-        <TextBlock DockPanel.Dock="Right" Text="{Binding FreeText}" Foreground="{DynamicResource FgMuted}" />
+        <TextBlock DockPanel.Dock="Right" Text="{Binding Places.FreeText}" Foreground="{DynamicResource FgMuted}" />
         <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource FgMuted}" />
         <TextBlock Text="{Binding WarningText}" Margin="16,0,16,0" Foreground="{DynamicResource Warning}"
                    TextTrimming="CharacterEllipsis" />

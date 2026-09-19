@@ -54,7 +54,7 @@
           </Button>
           <TextBlock Text="Quick access" Style="{StaticResource SectionLabel}" />
         </DockPanel>
-        <ItemsControl ItemsSource="{Binding Quick}">
+        <ItemsControl ItemsSource="{Binding Places.Quick}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
               <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
@@ -73,7 +73,7 @@
         </ItemsControl>
 
         <TextBlock Text="This PC" Style="{StaticResource SectionLabel}" />
-        <ItemsControl ItemsSource="{Binding Drives}">
+        <ItemsControl ItemsSource="{Binding Places.Drives}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
               <Button Style="{StaticResource SideButton}" IsEnabled="{Binding Available}"
@@ -82,15 +82,24 @@
                                 RelativeSource={RelativeSource AncestorType=UserControl}}">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource Glyph}" Text="&#xEDA2;" Foreground="{DynamicResource FgMuted}" />
+                    <TextBlock x:Name="DriveGlyph" Style="{StaticResource Glyph}" Text="&#xEDA2;"
+                               Foreground="{DynamicResource FgMuted}" />
                     <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
-                  <ProgressBar Style="{StaticResource DriveBar}" Margin="24,5,4,2"
+                  <!-- A mounted image is always full, so its bar is a solid block saying nothing.
+                       The accent tint is what marks it as not one of the machine's own disks. -->
+                  <ProgressBar x:Name="Bar" Style="{StaticResource DriveBar}" Margin="24,5,4,2"
                                Value="{Binding UsedFraction, Mode=OneWay, FallbackValue=0}" />
                   <TextBlock Text="{Binding CapacityText}" Margin="24,0,4,2"
                              Style="{StaticResource SideNote}" />
                 </StackPanel>
               </Button>
+              <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsOptical}" Value="True">
+                  <Setter TargetName="Bar" Property="Visibility" Value="Collapsed" />
+                  <Setter TargetName="DriveGlyph" Property="Foreground" Value="{DynamicResource Accent}" />
+                </DataTrigger>
+              </DataTemplate.Triggers>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

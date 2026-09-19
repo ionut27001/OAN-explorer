@@ -22,6 +22,13 @@ internal static class Native
     internal const int SHIL_EXTRALARGE = 2;
     internal const int SHIL_JUMBO = 4;
 
+    internal const uint MF_BYPOSITION = 0x0400;
+    internal const uint MF_SEPARATOR = 0x0800;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool InsertMenuW(nint menu, uint position, uint flags, nuint id, string? text);
+
     internal const uint CMF_EXPLORE = 0x0004;
     internal const uint CMF_EXTENDEDVERBS = 0x0100;
 
