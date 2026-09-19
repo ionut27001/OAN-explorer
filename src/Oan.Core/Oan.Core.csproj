@@ -8,6 +8,7 @@
     <!-- UseWPF switches to the desktop SDK's implicit usings, which drop these two. -->
     <Using Include="System.IO" />
     <Using Include="System.Net.Http" />
+    <PackageReference Include="SharpCompress" Version="1.0.0" />
     <InternalsVisibleTo Include="Oan.Tests" />
   </ItemGroup>
 </Project>

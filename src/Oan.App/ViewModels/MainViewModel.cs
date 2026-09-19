@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows.Input;
 using Oan.App.Platform;
 using Oan.Core.FileSystem;
+using Oan.Core.Archives;
 using Oan.Core.Model;
 using Oan.Core.Search;
 using Oan.Core.Navigation;
@@ -49,37 +50,38 @@ public sealed class MainViewModel : Observable
     private bool _showHidden;
     private bool _canPaste;
     private bool _editingAddress;
-    private bool _backdropSupported = true;
     private FileKind _kind = FileKind.All;
-    private SortKey _sort = SortKey.Name;
-    private bool _descending;
 
     public MainViewModel(IFileOperations ops, Settings settings, MountsViewModel? mounts = null)
     {
         _ops = ops;
         _settings = settings;
+        var look = new AppearanceViewModel(settings, Remember);
+        look.IconSizeChanged = () => { foreach (var row in Rows) row.SetIconSize(look.IconSize); };
+        Look = look;
         Mounts = mounts ?? new MountsViewModel();
         Mounts.Bind(path => Run(() => NavigateAsync(path)), Report, () => CurrentPath);
 
         BackCommand = new RelayCommand(() => Go(_history.Back()), () => _history.CanGoBack);
         ForwardCommand = new RelayCommand(() => Go(_history.Forward()), () => _history.CanGoForward);
-        UpCommand = new RelayCommand(() => Go(History.Parent(CurrentPath)), () => ParentPath is not null);
+        UpCommand = new RelayCommand(GoUp, () => Archive.Active || ParentPath is not null);
         RefreshCommand = new RelayCommand(() => { Notice = null; Run(ReloadAsync); }, () => CurrentPath.Length > 0);
 
         OpenPlaceCommand = new RelayCommand(p => Run(() => NavigateAsync((string)p!)));
         GoToCommand = new RelayCommand(p => Run(() => NavigateAsync(p as string ?? Address)));
-        SortCommand = new RelayCommand(p => SortBy((SortKey)p!));
+        SortCommand = new RelayCommand(p => Sort.By((SortKey)p!));
+        Sort.Changed += Rebuild;
 
         CopyCommand = new RelayCommand(() => PutOnClipboard(cut: false), () => HasSelection);
-        CutCommand = new RelayCommand(() => PutOnClipboard(cut: true), () => HasSelection);
+        CutCommand = new RelayCommand(() => PutOnClipboard(cut: true), () => HasSelection && CanWriteHere);
         PasteCommand = new RelayCommand(() => Run(PasteAsync), () => CanPaste && CanWriteHere);
-        RenameCommand = new RelayCommand(() => Run(RenameAsync), () => _selection.Count == 1);
-        DeleteCommand = new RelayCommand(() => Run(() => DeleteAsync(permanent: false)), () => HasSelection);
-        DeletePermanentlyCommand = new RelayCommand(() => Run(() => DeleteAsync(permanent: true)), () => HasSelection);
+        RenameCommand = new RelayCommand(() => Run(RenameAsync), () => _selection.Count == 1 && CanWriteHere);
+        DeleteCommand = new RelayCommand(() => Run(() => DeleteAsync(permanent: false)), () => HasSelection && CanWriteHere);
+        DeletePermanentlyCommand = new RelayCommand(() => Run(() => DeleteAsync(permanent: true)), () => HasSelection && CanWriteHere);
         NewFolderCommand = new RelayCommand(() => Run(NewFolderAsync), () => CanWriteHere);
         NewItemCommand = new RelayCommand(p => Run(() => NewAsync((NewItem)p!)), _ => CanWriteHere);
         OpenSelectionCommand = new RelayCommand(OpenSelection, () => HasSelection);
-        BackdropCommand = new RelayCommand(p => Backdrop = (Backdrop)p!);
+        BackdropCommand = new RelayCommand(p => Look.Backdrop = (Backdrop)p!);
         KindCommand = new RelayCommand(p => KindFilter = (FileKind)p!);
         ClearFiltersCommand = new RelayCommand(ClearFilters, () => Filtering);
         SearchCommand = new RelayCommand(() => Run(SearchAsync), () => _filter.Trim().Length > 0 && CurrentPath.Length > 0);
@@ -112,12 +114,14 @@ public sealed class MainViewModel : Observable
     public Action<IReadOnlyList<EntryViewModel>>? Reselect { get; set; }
 
     /// <summary>Puts the backdrop on the window and answers whether Windows took it. Set by the window.</summary>
-    public Func<Backdrop, bool>? ApplyBackdrop { get; set; }
 
     /// <summary>The disk images OAN has attached, and the only way it opens one.</summary>
     public MountsViewModel Mounts { get; }
 
     public SearchViewModel Search { get; } = new();
+    public ArchiveViewModel Archive { get; } = new();
+    public SortViewModel Sort { get; } = new();
+    public AppearanceViewModel Look { get; }
 
     public ICommand BackCommand { get; }
     public ICommand ForwardCommand { get; }
@@ -198,79 +202,6 @@ public sealed class MainViewModel : Observable
         set { if (Set(ref _showHidden, value)) Run(ReloadAsync); }
     }
 
-    /// <summary>
-    /// One of the four sizes the shell keeps an image list for. 16 is the details view; anything
-    /// larger switches to the tile grid, because a details row with a 48px icon is mostly gap.
-    /// </summary>
-    public int IconSize
-    {
-        get => _settings.IconSize;
-        set
-        {
-            if (_settings.IconSize == value) return;
-
-            _settings.IconSize = value;
-
-            // Each size is its own cache entry and a 256px bitmap is a quarter of a megabyte, so
-            // the size being left behind is dropped rather than kept for a switch back.
-            ShellIcons.Clear();
-            foreach (var row in Rows) row.SetIconSize(value);
-
-            OnChanged();
-            OnChanged(nameof(IsDetails));
-            OnChanged(nameof(TileWidth));
-            OnChanged(nameof(TileHeight));
-            Remember();
-        }
-    }
-
-    public bool IsDetails => IconSize == 16;
-
-    /// <summary>The tile a grid item is laid out in: the icon, then room for two lines of name.</summary>
-    public double TileWidth => IconSize + 48;
-
-    public double TileHeight => IconSize + 60;
-
-    public Backdrop Backdrop
-    {
-        get => _settings.Backdrop;
-        set
-        {
-            if (_settings.Backdrop == value) return;
-
-            _settings.Backdrop = value;
-            BackdropSupported = ApplyBackdrop?.Invoke(value) ?? false;
-
-            OnChanged();
-            OnChanged(nameof(ChromeOverAcrylic));
-            Remember();
-        }
-    }
-
-    /// <summary>False when Windows refused the attribute; the window is solid whatever is chosen.</summary>
-    public bool BackdropSupported
-    {
-        get => _backdropSupported;
-        set
-        {
-            if (!Set(ref _backdropSupported, value)) return;
-
-            OnChanged(nameof(BackdropNote));
-            OnChanged(nameof(ChromeOverAcrylic));
-        }
-    }
-
-    /// <summary>
-    /// Acrylic blurs whatever window is behind this one, so the chrome cannot know how bright its
-    /// own background is: measured over a white window, the muted status text came out at 1.31:1.
-    /// In that one mode the bars that carry text are given a scrim. Mica tints from the wallpaper
-    /// alone and measured the same over a white window as over the desktop, so it is left clear.
-    /// </summary>
-    public bool ChromeOverAcrylic => BackdropSupported && Backdrop == Backdrop.Acrylic;
-
-    public string? BackdropNote =>
-        BackdropSupported ? null : "Not supported on this Windows build — the window stays solid.";
-
     public bool CanPaste { get => _canPaste; private set => Set(ref _canPaste, value); }
 
     public IReadOnlyList<EntryViewModel> Selection
@@ -286,10 +217,6 @@ public sealed class MainViewModel : Observable
         }
     }
 
-    public string NameHeader => Header("Name", SortKey.Name);
-    public string SizeHeader => Header("Size", SortKey.Size);
-    public string KindHeader => Header("Type", SortKey.Kind);
-    public string ModifiedHeader => Header("Date modified", SortKey.Modified);
 
     public string StatusText
     {
@@ -301,6 +228,12 @@ public sealed class MainViewModel : Observable
                 var head = running ? $"Searching… {Rows.Count} found" : $"{Rows.Count} found";
                 var seen = $"  ·  {Search.Tally.FilesSeen:N0} files in {Search.Tally.FoldersSeen:N0} folders";
                 return head + seen + (_selection.Count > 0 ? $"  ·  {_selection.Count} selected" : "");
+            }
+
+            if (Archive.Active)
+            {
+                var inside = $"{Rows.Count} item{(Rows.Count == 1 ? "" : "s")} in this archive — read only";
+                return _selection.Count > 0 ? $"{inside}  ·  {_selection.Count} selected" : inside;
             }
 
             if (Busy) return "Reading folder…";
@@ -371,10 +304,69 @@ public sealed class MainViewModel : Observable
 
     public void Open(EntryViewModel row)
     {
+        if (Archive.Active)
+        {
+            // Inside one already: a folder walks deeper, a file is extracted to temp and opened
+            // read-only, because nothing written back would reach the archive.
+            if (row.Entry.IsDirectory) OpenInsideArchive(row);
+            else Run(() => OpenFromArchiveAsync(row));
+            return;
+        }
+
+        if (ArchiveReader.Detect(row.Entry.FullPath) is not Oan.Core.Archives.ArchiveKind.None && !row.Entry.IsDirectory)
+        {
+            Run(() => EnterArchiveAsync(row.Entry.FullPath));
+            return;
+        }
+
         if (row.Entry.IsDirectory) Run(() => NavigateAsync(row.Entry.FullPath));
         // Never the shell's default verb for an image: that verb is the one that hangs.
         else if (MountsViewModel.IsImage(row.Entry.FullPath)) Run(() => Mounts.OpenAsync(row.Entry.FullPath));
         else Launch(row.Entry.FullPath);
+    }
+
+
+    private async Task EnterArchiveAsync(string archivePath)
+    {
+        Busy = true;
+        try
+        {
+            if (await Archive.OpenAsync(archivePath) is { } error) Notice = error;
+            else ShowArchiveRows();
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    private void OpenInsideArchive(EntryViewModel row)
+    {
+        Archive.Descend(Archive.Inside(row.Entry.FullPath));
+        ShowArchiveRows();
+    }
+
+    private async Task OpenFromArchiveAsync(EntryViewModel row)
+    {
+        var (file, error) = await Archive.CopyOutAsync(Archive.Inside(row.Entry.FullPath));
+        if (file is null) { Notice = error; return; }
+
+        Notice = "Opened a read-only copy — changes will not go back into the archive.";
+        Launch(file);
+    }
+
+    private void ShowArchiveRows()
+    {
+        Selection = [];
+        Rows = [.. Archive.Rows().Select(e => new EntryViewModel(e, Look.IconSize))];
+        Address = Archive.DisplayPath;
+        Crumbs = BuildCrumbs(Archive.DisplayPath);
+
+        OnChanged(nameof(CurrentPath));
+        OnChanged(nameof(ParentPath));
+        OnChanged(nameof(StatusText));
+        OnChanged(nameof(ListMessage));
+        OnChanged(nameof(CanWriteHere));
     }
 
     public IReadOnlyList<string> SelectedPaths() => _selection.Select(r => r.Entry.FullPath).ToArray();
@@ -389,7 +381,11 @@ public sealed class MainViewModel : Observable
 
     public void Drop(IReadOnlyList<string> paths, bool move) => Run(() => DropAsync(paths, move));
 
-    public bool CanWriteHere => CurrentPath.Length > 0 && _listing.Error is null;
+    /// <summary>
+    /// Nothing inside an archive can be written. Asked by every command that would create,
+    /// rename or delete, so they come up disabled rather than enabled and then apologising.
+    /// </summary>
+    public bool CanWriteHere => !Archive.Active && CurrentPath.Length > 0 && _listing.Error is null;
 
     /// <summary>Puts a message in the status bar. For failures the window itself detects.</summary>
     public void Report(string message) => Notice = message;
@@ -472,6 +468,18 @@ public sealed class MainViewModel : Observable
         if (_settings.Save(Settings.DefaultPath) is { } error) Notice = $"Settings not saved: {error}";
     }
 
+    /// <summary>Up inside an archive walks out of its folders first, then out of the archive.</summary>
+    private void GoUp()
+    {
+        if (!Archive.Active) { Go(History.Parent(CurrentPath)); return; }
+
+        if (Archive.Ascend()) { ShowArchiveRows(); return; }
+
+        var archive = Archive.ArchivePath!;
+        Archive.Leave();
+        Run(() => NavigateAsync(Path.GetDirectoryName(archive) ?? archive));
+    }
+
     private void Go(string? path)
     {
         if (path is null) return;
@@ -488,6 +496,7 @@ public sealed class MainViewModel : Observable
     private async Task LoadAsync(string path)
     {
         LeaveSearch();
+        Archive.Leave();
         _load?.Cancel();
         var cts = new CancellationTokenSource();
         _load = cts;
@@ -573,7 +582,7 @@ public sealed class MainViewModel : Observable
             Size = hit.Size,
             Modified = hit.Modified,
         },
-        IconSize);
+        Look.IconSize);
 
     private void Flush(List<EntryViewModel> batch, FileSearch engine)
     {
@@ -649,8 +658,8 @@ public sealed class MainViewModel : Observable
         if (_filter.Length > 0)
             source = source.Where(e => e.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase));
 
-        var rows = source.Select(e => new EntryViewModel(e, IconSize)).ToArray();
-        Array.Sort(rows, Compare);
+        var rows = source.Select(e => new EntryViewModel(e, Look.IconSize)).ToArray();
+        Array.Sort(rows, Sort.Compare);
 
         Selection = [];
         Rows = rows;
@@ -664,38 +673,6 @@ public sealed class MainViewModel : Observable
         OnChanged(nameof(StatusText));
         OnChanged(nameof(ListMessage));
     }
-
-    private int Compare(EntryViewModel x, EntryViewModel y)
-    {
-        var (a, b) = (x.Entry, y.Entry);
-        if (a.IsDirectory != b.IsDirectory) return a.IsDirectory ? -1 : 1;
-
-        var order = _sort switch
-        {
-            SortKey.Size => Nullable.Compare(a.Size, b.Size),
-            SortKey.Kind => string.Compare(x.KindText, y.KindText, StringComparison.CurrentCultureIgnoreCase),
-            SortKey.Modified => Nullable.Compare(a.Modified, b.Modified),
-            _ => NaturalSort.Instance.Compare(a.Name, b.Name),
-        };
-
-        if (_descending) order = -order;
-        return order != 0 ? order : NaturalSort.Instance.Compare(a.Name, b.Name);
-    }
-
-    private void SortBy(SortKey key)
-    {
-        if (_sort == key) _descending = !_descending;
-        else (_sort, _descending) = (key, false);
-
-        Rebuild();
-        OnChanged(nameof(NameHeader));
-        OnChanged(nameof(SizeHeader));
-        OnChanged(nameof(KindHeader));
-        OnChanged(nameof(ModifiedHeader));
-    }
-
-    private string Header(string text, SortKey key) =>
-        _sort == key ? $"{text}  {(_descending ? '▾' : '▴')}" : text;
 
     /// <summary>Both filters at once: two ways to be hiding things, one way to stop.</summary>
     private void ClearFilters()

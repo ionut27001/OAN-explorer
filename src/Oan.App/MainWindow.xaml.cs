@@ -33,9 +33,9 @@ public partial class MainWindow : Window
             foreach (var row in rows) List.SelectedItems.Add(row);
         };
 
-        vm.PropertyChanged += (_, e) =>
+        vm.Look.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(MainViewModel.IsDetails)) ApplyViewMode();
+            if (e.PropertyName == nameof(AppearanceViewModel.IsDetails)) ApplyViewMode();
         };
 
         ApplyViewMode();
@@ -52,7 +52,7 @@ public partial class MainWindow : Window
     /// re-applied every time one of its triggers re-evaluates — which the ListView reads as the
     /// same view being handed to it twice. So this one property is set here instead.
     /// </summary>
-    private void ApplyViewMode() => List.View = _vm.IsDetails ? (ViewBase)FindResource("DetailsView") : null;
+    private void ApplyViewMode() => List.View = _vm.Look.IsDetails ? (ViewBase)FindResource("DetailsView") : null;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -61,8 +61,8 @@ public partial class MainWindow : Window
         _vm.OwnerHandle = WindowEffects.Handle(this);
         Theme.Follow(Application.Current, this);
 
-        _vm.ApplyBackdrop = ApplyBackdrop;
-        _vm.BackdropSupported = ApplyBackdrop(_vm.Backdrop);
+        _vm.Look.Apply = ApplyBackdrop;
+        _vm.Look.Supported = ApplyBackdrop(_vm.Look.Backdrop);
     }
 
     /// <summary>

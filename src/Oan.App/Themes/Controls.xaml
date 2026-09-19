@@ -106,7 +106,7 @@
   <Style x:Key="ChromeBar" TargetType="Border">
     <Setter Property="Background" Value="Transparent" />
     <Style.Triggers>
-      <DataTrigger Binding="{Binding ChromeOverAcrylic}" Value="True">
+      <DataTrigger Binding="{Binding Look.ChromeOverAcrylic}" Value="True">
         <Setter Property="Background" Value="{DynamicResource Scrim}" />
       </DataTrigger>
     </Style.Triggers>

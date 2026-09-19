@@ -14,16 +14,16 @@
     <BooleanToVisibilityConverter x:Key="Show" />
 
     <DataTemplate x:Key="NameHeaderTemplate">
-      <TextBlock Text="{Binding DataContext.NameHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+      <TextBlock Text="{Binding DataContext.Sort.NameHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
     </DataTemplate>
     <DataTemplate x:Key="SizeHeaderTemplate">
-      <TextBlock Text="{Binding DataContext.SizeHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+      <TextBlock Text="{Binding DataContext.Sort.SizeHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
     </DataTemplate>
     <DataTemplate x:Key="KindHeaderTemplate">
-      <TextBlock Text="{Binding DataContext.KindHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+      <TextBlock Text="{Binding DataContext.Sort.KindHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
     </DataTemplate>
     <DataTemplate x:Key="ModifiedHeaderTemplate">
-      <TextBlock Text="{Binding DataContext.ModifiedHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+      <TextBlock Text="{Binding DataContext.Sort.ModifiedHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
     </DataTemplate>
 
     <GridView x:Key="DetailsView" AllowsColumnReorder="False">
@@ -65,8 +65,8 @@
     <DataTemplate x:Key="TileTemplate">
       <StackPanel x:Name="Tile" Margin="4,8,4,0">
         <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality"
-               Width="{Binding DataContext.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}"
-               Height="{Binding DataContext.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}" />
+               Width="{Binding DataContext.Look.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}"
+               Height="{Binding DataContext.Look.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}" />
         <TextBlock Text="{Binding Name}" Margin="2,6,2,0" MaxHeight="34"
                    TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
       </StackPanel>
@@ -78,7 +78,7 @@
     </DataTemplate>
 
     <ItemsPanelTemplate x:Key="TilePanel">
-      <ctl:VirtualizingWrapPanel ItemWidth="{Binding TileWidth}" ItemHeight="{Binding TileHeight}" />
+      <ctl:VirtualizingWrapPanel ItemWidth="{Binding Look.TileWidth}" ItemHeight="{Binding Look.TileHeight}" />
     </ItemsPanelTemplate>
 
     <!-- Container style and panel switch together, set here rather than on the ListView because a
@@ -94,7 +94,7 @@
       <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
       <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
       <Style.Triggers>
-        <DataTrigger Binding="{Binding IsDetails}" Value="False">
+        <DataTrigger Binding="{Binding Look.IsDetails}" Value="False">
           <Setter Property="ItemContainerStyle" Value="{StaticResource Tile}" />
           <Setter Property="ItemTemplate" Value="{StaticResource TileTemplate}" />
           <Setter Property="ItemsPanel" Value="{StaticResource TilePanel}" />
@@ -348,11 +348,11 @@
               <MenuItem Header="Solid"
                         Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Solid}"
                         IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Solid}" />
-              <MenuItem Header="{Binding BackdropNote}" IsEnabled="False">
+              <MenuItem Header="{Binding Look.Note}" IsEnabled="False">
                 <MenuItem.Style>
                   <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                     <Style.Triggers>
-                      <DataTrigger Binding="{Binding BackdropNote}" Value="{x:Null}">
+                      <DataTrigger Binding="{Binding Look.Note}" Value="{x:Null}">
                         <Setter Property="Visibility" Value="Collapsed" />
                       </DataTrigger>
                     </Style.Triggers>
