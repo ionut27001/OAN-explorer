@@ -31,11 +31,15 @@ public class ShapeTests
         // SearchViewModel and it is 904 now. The ceiling follows it down each time, so the only
         // direction this file can go is smaller. Still holding navigation, selection, clipboard,
         // file operations, the sidebar and settings â€” clipboard is the next one out.
-        ("src/Oan.App/ViewModels/MainViewModel.cs", 850,
+        ("src/Oan.App/ViewModels/MainViewModel.cs", 842,
             "Several concerns still in one class; the ceiling ratchets down as they leave. " +
-            "Search and the sidebar have gone; file operations are the next."),
+            "Search, the sidebar, the toolbar and the path rules have gone; file operations are " +
+            "still in here and are the next out."),
 
-        ("src/Oan.App/MainWindow.xaml", 531, "One window's markup. XAML does not factor the way code does."),
+        // 531 when the toolbar was still inline; it is its own control now. The breadcrumb and
+        // search row is the last block in here big enough to be worth moving.
+        ("src/Oan.App/MainWindow.xaml", 426, "One window's markup. XAML does not factor the way code does."),
+
     ];
 
     private static IEnumerable<FileInfo> Sources() =>

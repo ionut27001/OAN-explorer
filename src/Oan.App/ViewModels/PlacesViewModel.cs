@@ -1,4 +1,5 @@
 using Oan.App.Platform;
+using System.Windows.Input;
 using Oan.Core.FileSystem;
 
 namespace Oan.App.ViewModels;
@@ -16,7 +17,14 @@ public sealed class PlacesViewModel : Observable, IDisposable
     private IReadOnlyList<PlaceViewModel> _drives = [];
     private string _freeText = "";
 
-    public PlacesViewModel() => _sizes = new SizeQueue(Measured);
+    public PlacesViewModel()
+    {
+        _sizes = new SizeQueue(Measured);
+        MeasureAllCommand = new RelayCommand(MeasureAll, () => Quick.Count > 0);
+    }
+
+    /// <summary>The sidebar's own "Sizes" button, which measures every quick-access folder.</summary>
+    public ICommand MeasureAllCommand { get; }
 
     public IReadOnlyList<PlaceViewModel> Quick { get => _quick; private set => Set(ref _quick, value); }
     public IReadOnlyList<PlaceViewModel> Drives { get => _drives; private set => Set(ref _drives, value); }

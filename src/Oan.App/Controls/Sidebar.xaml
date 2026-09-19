@@ -90,7 +90,7 @@
       <StackPanel Margin="6,0,2,8">
         <DockPanel>
           <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Padding="6,1" Margin="0,8,4,0"
-                  Command="{Binding MeasureSizesCommand}"
+                  Command="{Binding Places.MeasureAllCommand}"
                   ToolTip="Measure folder sizes — the home folder can take about a minute">
             <TextBlock Text="Sizes" FontSize="11" Foreground="{DynamicResource Accent}" />
           </Button>

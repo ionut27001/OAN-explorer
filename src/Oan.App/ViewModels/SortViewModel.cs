@@ -43,7 +43,7 @@ public sealed class SortViewModel : Observable
 
         var order = _key switch
         {
-            SortKey.Size => Nullable.Compare(a.Size, b.Size),
+            SortKey.Size => Nullable.Compare(x.SortSize, y.SortSize),
             SortKey.Kind => string.Compare(x.KindText, y.KindText, StringComparison.CurrentCultureIgnoreCase),
             SortKey.Modified => Nullable.Compare(a.Modified, b.Modified),
             _ => NaturalSort.Instance.Compare(a.Name, b.Name),

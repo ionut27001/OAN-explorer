@@ -6,8 +6,26 @@ namespace Oan.App.Platform;
 /// Path questions with no view model in them. Moved out of MainViewModel because none of them
 /// touch its state, and a window's model that also owns the path rules is how that class grew.
 /// </summary>
+/// <summary>One step of the address bar: what to show, and where clicking it goes.</summary>
+public sealed record Crumb(string Name, string Path);
+
 internal static class Paths
 {
+    /// <summary>
+    /// The address bar's trail, root first. The root shows as "C:\" rather than as its own name,
+    /// which for a drive is the empty string.
+    /// </summary>
+    public static IReadOnlyList<Crumb> Crumbs(string path)
+    {
+        var crumbs = new List<Crumb>();
+        for (var dir = new DirectoryInfo(path); dir is not null; dir = dir.Parent)
+        {
+            var name = dir.Parent is null ? dir.FullName.TrimEnd(Path.DirectorySeparatorChar) : dir.Name;
+            crumbs.Insert(0, new Crumb(name, dir.FullName));
+        }
+        return crumbs;
+    }
+
     /// <summary>
     /// The folder a typed address means, or null. Environment variables are expanded, so %TEMP%
     /// works the way it does in Explorer's address bar, and surrounding quotes are dropped

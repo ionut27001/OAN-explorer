@@ -15,8 +15,6 @@ namespace Oan.App.ViewModels;
 
 public enum SortKey { Name, Size, Kind, Modified }
 
-public sealed record Crumb(string Name, string Path);
-
 /// <summary>
 /// An entry of the New submenu; a null template is the folder. It carries the command because a
 /// menu inside a popup has no ancestor to reach the view model through.
@@ -90,7 +88,6 @@ public sealed class MainViewModel : Observable
         StopSearchCommand = new RelayCommand(Search.Stop, () => Search.Running);
         EndSearchCommand = new RelayCommand(EndSearch, () => Search.Active);
         Search.Changed += Announce;
-        MeasureSizesCommand = new RelayCommand(Places.MeasureAll, () => Places.Quick.Count > 0);
 
         _newItems = [new NewItem("Folder", "Ctrl+Shift+N", NewItemCommand, null)];
         _ = LoadTemplatesAsync();
@@ -150,7 +147,9 @@ public sealed class MainViewModel : Observable
     public ICommand SearchCommand { get; }
     public ICommand StopSearchCommand { get; }
     public ICommand EndSearchCommand { get; }
-    public ICommand MeasureSizesCommand { get; }
+
+    /// <summary>The Size column for this listing's folders; see the class for why it is off.</summary>
+    public FolderSizesViewModel FolderSizes { get; } = new();
 
     public IReadOnlyList<EntryViewModel> Rows { get => _rows; private set => Set(ref _rows, value); }
     public IReadOnlyList<Crumb> Crumbs { get => _crumbs; private set => Set(ref _crumbs, value); }
@@ -361,9 +360,9 @@ public sealed class MainViewModel : Observable
     private void ShowArchiveRows()
     {
         Selection = [];
-        Rows = [.. Archive.Rows().Select(e => new EntryViewModel(e, Look.IconSize))];
+        Rows = [.. Archive.Rows().Select(e => new EntryViewModel(e, Look.IconSize, measurable: false))];
         Address = Archive.DisplayPath;
-        Crumbs = BuildCrumbs(Archive.DisplayPath);
+        Crumbs = Paths.Crumbs(Archive.DisplayPath);
 
         OnChanged(nameof(CurrentPath));
         OnChanged(nameof(ParentPath));
@@ -397,6 +396,7 @@ public sealed class MainViewModel : Observable
     public void Shutdown()
     {
         _load?.Cancel();
+        FolderSizes.Dispose();
         Places.Dispose();
 
         // An image still attached after OAN exits is litter on the user's machine.
@@ -643,7 +643,7 @@ public sealed class MainViewModel : Observable
         Places.ShowFree(free);
         Address = path;
         EditingAddress = false;
-        Crumbs = BuildCrumbs(path);
+        Crumbs = Paths.Crumbs(path);
         Places.Track(CurrentPath);
         Rebuild();
 
@@ -667,6 +667,7 @@ public sealed class MainViewModel : Observable
 
         Selection = [];
         Rows = rows;
+        FolderSizes.Show(rows);
 
         // Replacing the rows drops the list's selection; put back whatever survived, so a sort,
         // a refresh or a finished operation does not make the user pick the same items again.
@@ -836,15 +837,6 @@ public sealed class MainViewModel : Observable
     {
         try { await work(); }
         catch (Exception ex) { Notice = ex.Message; }
-    }
-
-    private static IReadOnlyList<Crumb> BuildCrumbs(string path)
-    {
-        var crumbs = new List<Crumb>();
-        for (var dir = new DirectoryInfo(path); dir is not null; dir = dir.Parent)
-            crumbs.Insert(0, new Crumb(dir.Parent is null ? dir.FullName.TrimEnd(Path.DirectorySeparatorChar) : dir.Name, dir.FullName));
-
-        return crumbs;
     }
 
 }

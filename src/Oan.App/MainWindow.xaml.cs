@@ -201,16 +201,7 @@ public partial class MainWindow : Window
     /// The menu is hung from the button's right edge, because these buttons live at the right edge
     /// of the window and a menu dropped from their left corner opens off the side of it.
     /// </summary>
-    private void OnMenuButtonClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { ContextMenu: { } menu } button) return;
-
-        menu.PlacementTarget = button;
-        menu.Placement = PlacementMode.Custom;
-        menu.CustomPopupPlacementCallback = (popup, target, _) =>
-            [new CustomPopupPlacement(new Point(target.Width - popup.Width, target.Height), PopupPrimaryAxis.Horizontal)];
-        menu.IsOpen = true;
-    }
+    private void OnMenuButtonClick(object sender, RoutedEventArgs e) => MenuButton.Open(sender);
 
 
     /// <summary>Middle-click a folder to open it in a new tab, the way a browser opens a link.</summary>
