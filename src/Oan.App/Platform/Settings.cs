@@ -4,7 +4,12 @@ using System.Text.Json.Serialization;
 
 namespace Oan.App.Platform;
 
-public enum Backdrop { Mica, Acrylic, Solid }
+/// <summary>
+/// MicaAlt is DWMSBT_TABBEDWINDOW: the material Windows 11 made for tabbed windows, and the one
+/// Explorer itself uses. It pulls the caption band further from the content than plain Mica does,
+/// which is what makes a strip of tabs read as part of the window rather than pasted on top.
+/// </summary>
+public enum Backdrop { Mica, MicaAlt, Acrylic, Solid }
 
 /// <summary>
 /// What the window remembers between runs. A file that is missing, unreadable or nonsense gives
@@ -22,7 +27,7 @@ public sealed class Settings
 
     public int IconSize { get; set; } = 16;
 
-    public Backdrop Backdrop { get; set; } = Backdrop.Mica;
+    public Backdrop Backdrop { get; set; } = Backdrop.MicaAlt;
 
     public static string DefaultPath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OAN", "settings.json");
@@ -66,7 +71,7 @@ public sealed class Settings
     private Settings Checked()
     {
         if (!Sizes.Contains(IconSize)) IconSize = 16;
-        if (Backdrop is < Backdrop.Mica or > Backdrop.Solid) Backdrop = Backdrop.Mica;
+        if (!Enum.IsDefined(Backdrop)) Backdrop = Backdrop.MicaAlt;
         return this;
     }
 }

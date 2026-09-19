@@ -13,7 +13,7 @@ public class SettingsTests
         var settings = Settings.Load(Path.Combine(temp.Root, "never-written.json"));
 
         Assert.Equal(16, settings.IconSize);
-        Assert.Equal(Backdrop.Mica, settings.Backdrop);
+        Assert.Equal(Backdrop.MicaAlt, settings.Backdrop);
     }
 
     [Fact]
@@ -54,14 +54,14 @@ public class SettingsTests
     }
 
     [Fact]
-    public void A_backdrop_outside_the_enum_falls_back_to_mica()
+    public void A_backdrop_outside_the_enum_falls_back_to_the_default()
     {
         using var temp = new TempFolder();
         var path = temp.AddFile("settings.json", """{ "IconSize": 32, "Backdrop": 9 }""");
 
         var settings = Settings.Load(path);
 
-        Assert.Equal(Backdrop.Mica, settings.Backdrop);
+        Assert.Equal(Backdrop.MicaAlt, settings.Backdrop);
         Assert.Equal(32, settings.IconSize);
     }
 
@@ -74,7 +74,7 @@ public class SettingsTests
         var settings = Settings.Load(path);
 
         Assert.Equal(16, settings.IconSize);
-        Assert.Equal(Backdrop.Mica, settings.Backdrop);
+        Assert.Equal(Backdrop.MicaAlt, settings.Backdrop);
     }
 
     [Fact]

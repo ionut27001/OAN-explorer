@@ -1,0 +1,77 @@
+<!-- The scroll bars, whole: the default ones are a wide grey channel with arrow buttons at each
+     end, which next to a file list reads as a second window border. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style x:Key="ScrollTrackButton" TargetType="RepeatButton">
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="IsTabStop" Value="False" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RepeatButton">
+          <Border Background="Transparent" />
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="ScrollGrip" TargetType="Thumb">
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Thumb">
+          <Border x:Name="Bd" Background="{DynamicResource ScrollThumb}" CornerRadius="3" Margin="3" />
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ScrollThumbHover}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <ControlTemplate x:Key="VerticalScrollBar" TargetType="ScrollBar">
+    <Grid Background="Transparent">
+      <Track x:Name="PART_Track" IsDirectionReversed="True">
+        <Track.DecreaseRepeatButton>
+          <RepeatButton Command="ScrollBar.PageUpCommand" Style="{StaticResource ScrollTrackButton}" />
+        </Track.DecreaseRepeatButton>
+        <Track.Thumb>
+          <Thumb Style="{StaticResource ScrollGrip}" />
+        </Track.Thumb>
+        <Track.IncreaseRepeatButton>
+          <RepeatButton Command="ScrollBar.PageDownCommand" Style="{StaticResource ScrollTrackButton}" />
+        </Track.IncreaseRepeatButton>
+      </Track>
+    </Grid>
+  </ControlTemplate>
+
+  <ControlTemplate x:Key="HorizontalScrollBar" TargetType="ScrollBar">
+    <Grid Background="Transparent">
+      <Track x:Name="PART_Track" Orientation="Horizontal">
+        <Track.DecreaseRepeatButton>
+          <RepeatButton Command="ScrollBar.PageLeftCommand" Style="{StaticResource ScrollTrackButton}" />
+        </Track.DecreaseRepeatButton>
+        <Track.Thumb>
+          <Thumb Style="{StaticResource ScrollGrip}" />
+        </Track.Thumb>
+        <Track.IncreaseRepeatButton>
+          <RepeatButton Command="ScrollBar.PageRightCommand" Style="{StaticResource ScrollTrackButton}" />
+        </Track.IncreaseRepeatButton>
+      </Track>
+    </Grid>
+  </ControlTemplate>
+
+  <Style TargetType="ScrollBar">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Template" Value="{StaticResource VerticalScrollBar}" />
+    <Style.Triggers>
+      <Trigger Property="Orientation" Value="Horizontal">
+        <Setter Property="Width" Value="Auto" />
+        <Setter Property="Height" Value="12" />
+        <Setter Property="Template" Value="{StaticResource HorizontalScrollBar}" />
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+</ResourceDictionary>

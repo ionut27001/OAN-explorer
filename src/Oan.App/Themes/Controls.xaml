@@ -137,77 +137,6 @@
     </Setter>
   </Style>
 
-  <Style x:Key="ScrollTrackButton" TargetType="RepeatButton">
-    <Setter Property="Focusable" Value="False" />
-    <Setter Property="IsTabStop" Value="False" />
-    <Setter Property="Template">
-      <Setter.Value>
-        <ControlTemplate TargetType="RepeatButton">
-          <Border Background="Transparent" />
-        </ControlTemplate>
-      </Setter.Value>
-    </Setter>
-  </Style>
-
-  <Style x:Key="ScrollGrip" TargetType="Thumb">
-    <Setter Property="Template">
-      <Setter.Value>
-        <ControlTemplate TargetType="Thumb">
-          <Border x:Name="Bd" Background="{DynamicResource ScrollThumb}" CornerRadius="3" Margin="3" />
-          <ControlTemplate.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ScrollThumbHover}" />
-            </Trigger>
-          </ControlTemplate.Triggers>
-        </ControlTemplate>
-      </Setter.Value>
-    </Setter>
-  </Style>
-
-  <ControlTemplate x:Key="VerticalScrollBar" TargetType="ScrollBar">
-    <Grid Background="Transparent">
-      <Track x:Name="PART_Track" IsDirectionReversed="True">
-        <Track.DecreaseRepeatButton>
-          <RepeatButton Command="ScrollBar.PageUpCommand" Style="{StaticResource ScrollTrackButton}" />
-        </Track.DecreaseRepeatButton>
-        <Track.Thumb>
-          <Thumb Style="{StaticResource ScrollGrip}" />
-        </Track.Thumb>
-        <Track.IncreaseRepeatButton>
-          <RepeatButton Command="ScrollBar.PageDownCommand" Style="{StaticResource ScrollTrackButton}" />
-        </Track.IncreaseRepeatButton>
-      </Track>
-    </Grid>
-  </ControlTemplate>
-
-  <ControlTemplate x:Key="HorizontalScrollBar" TargetType="ScrollBar">
-    <Grid Background="Transparent">
-      <Track x:Name="PART_Track" Orientation="Horizontal">
-        <Track.DecreaseRepeatButton>
-          <RepeatButton Command="ScrollBar.PageLeftCommand" Style="{StaticResource ScrollTrackButton}" />
-        </Track.DecreaseRepeatButton>
-        <Track.Thumb>
-          <Thumb Style="{StaticResource ScrollGrip}" />
-        </Track.Thumb>
-        <Track.IncreaseRepeatButton>
-          <RepeatButton Command="ScrollBar.PageRightCommand" Style="{StaticResource ScrollTrackButton}" />
-        </Track.IncreaseRepeatButton>
-      </Track>
-    </Grid>
-  </ControlTemplate>
-
-  <Style TargetType="ScrollBar">
-    <Setter Property="Width" Value="12" />
-    <Setter Property="Template" Value="{StaticResource VerticalScrollBar}" />
-    <Style.Triggers>
-      <Trigger Property="Orientation" Value="Horizontal">
-        <Setter Property="Width" Value="Auto" />
-        <Setter Property="Height" Value="12" />
-        <Setter Property="Template" Value="{StaticResource HorizontalScrollBar}" />
-      </Trigger>
-    </Style.Triggers>
-  </Style>
-
   <!-- GridViewColumnHeader finds the resize thumb by name and wires the drag itself. Without it
        the columns are fixed, and at the smallest window width the names are cut off for good. -->
   <Style x:Key="HeaderGripper" TargetType="Thumb">
@@ -371,6 +300,18 @@
         </ControlTemplate>
       </Setter.Value>
     </Setter>
+  </Style>
+
+  <!-- The line at the foot of a menu that says why the ones above it are unavailable. It goes
+       away when there is nothing to explain: a row that is always greyed out reads as a command
+       that is broken rather than as a sentence. -->
+  <Style x:Key="NoteItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+    <Setter Property="IsEnabled" Value="False" />
+    <Style.Triggers>
+      <Trigger Property="Header" Value="{x:Null}">
+        <Setter Property="Visibility" Value="Collapsed" />
+      </Trigger>
+    </Style.Triggers>
   </Style>
 
   <Style TargetType="Separator">

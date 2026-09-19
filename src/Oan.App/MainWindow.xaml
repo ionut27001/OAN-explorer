@@ -358,23 +358,16 @@
               <MenuItem Header="Mica" IsEnabled="{Binding BackdropSupported}"
                         Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Mica}"
                         IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Mica}" />
+              <MenuItem Header="Mica Alt" IsEnabled="{Binding BackdropSupported}"
+                        Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.MicaAlt}"
+                        IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=MicaAlt}" />
               <MenuItem Header="Acrylic" IsEnabled="{Binding BackdropSupported}"
                         Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Acrylic}"
                         IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Acrylic}" />
               <MenuItem Header="Solid"
                         Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Solid}"
                         IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Solid}" />
-              <MenuItem Header="{Binding Look.Note}" IsEnabled="False">
-                <MenuItem.Style>
-                  <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding Look.Note}" Value="{x:Null}">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </MenuItem.Style>
-              </MenuItem>
+              <MenuItem Header="{Binding Look.Note}" Style="{StaticResource NoteItem}" />
             </ContextMenu>
           </Button.ContextMenu>
         </Button>

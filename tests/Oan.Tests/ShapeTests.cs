@@ -35,7 +35,7 @@ public class ShapeTests
             "Several concerns still in one class; the ceiling ratchets down as they leave. " +
             "Search and the sidebar have gone; file operations are the next."),
 
-        ("src/Oan.App/MainWindow.xaml", 540, "One window's markup. XAML does not factor the way code does."),
+        ("src/Oan.App/MainWindow.xaml", 531, "One window's markup. XAML does not factor the way code does."),
     ];
 
     private static IEnumerable<FileInfo> Sources() =>

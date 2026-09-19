@@ -23,7 +23,7 @@ internal static class WindowEffects
         if (hwnd == 0) return false;
 
         // DWM_SYSTEMBACKDROP_TYPE: 1 none, 2 Mica, 3 Acrylic, 4 Mica Alt.
-        var type = kind switch { Backdrop.Mica => 2, Backdrop.Acrylic => 3, _ => 1 };
+        var type = kind switch { Backdrop.Mica => 2, Backdrop.Acrylic => 3, Backdrop.MicaAlt => 4, _ => 1 };
         if (DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref type, sizeof(int)) != 0) return false;
 
         // The attribute alone gets you a black window. DWM draws the backdrop in the window's
