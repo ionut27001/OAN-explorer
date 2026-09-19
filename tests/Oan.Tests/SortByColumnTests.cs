@@ -46,9 +46,7 @@ public class SortByColumnTests
             var grip = new Thumb();
             _ = new Track { Thumb = grip };
 
-            return (Ancestor.Of<ScrollContentPresenter>(rowLabel) is not null,
-                    Ancestor.Of<ScrollContentPresenter>(headerLabel) is not null,
-                    Ancestor.Of<ScrollContentPresenter>(grip) is not null);
+            return (BandArea.Starts(rowLabel), BandArea.Starts(headerLabel), BandArea.Starts(grip));
         });
 
         Assert.True(onRow, "a press on a row is where the band belongs");
