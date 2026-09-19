@@ -6,52 +6,63 @@
     <BooleanToVisibilityConverter x:Key="Show" />
   </UserControl.Resources>
 
-  <Border DockPanel.Dock="Top" Padding="2,0,6,0" Style="{StaticResource ChromeBar}"
-  >
-        <DockPanel>
-        <Button DockPanel.Dock="Right" HorizontalAlignment="Left" Style="{StaticResource FlatButton}"
-                Padding="8,4" Margin="4,0,0,0" ToolTip="New tab (Ctrl+T)"
-                Command="{Binding Tabs.NewTabCommand}">
-          <TextBlock Style="{StaticResource Glyph}" FontSize="12" Text="&#xE710;" />
-        </Button>
-        <ItemsControl ItemsSource="{Binding Tabs.Items}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Border x:Name="Chip" Margin="0,0,4,0" CornerRadius="5,5,0,0" Padding="10,5"
-                      Background="Transparent" MouseDown="OnTabMouseDown" MouseMove="OnTabMouseMove"
-                      AllowDrop="True" Drop="OnTabDrop" ToolTip="{Binding Path}">
-                <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="{Binding Title}" MaxWidth="150" TextTrimming="CharacterEllipsis"
-                             VerticalAlignment="Center" />
-                  <Button x:Name="CloseChip" Margin="8,0,0,0" Padding="3,0" Style="{StaticResource FlatButton}"
-                          ToolTip="Close tab (Ctrl+W)" CommandParameter="{Binding}"
-                          Command="{Binding DataContext.Tabs.CloseTabCommand,
-                                    RelativeSource={RelativeSource AncestorType=UserControl}}">
-                    <TextBlock Style="{StaticResource Glyph}" FontSize="10" Text="&#xE711;" />
-                  </Button>
-                </StackPanel>
-              </Border>
-              <DataTemplate.Triggers>
-                <!-- The last tab cannot be closed, so it does not get a button that would do
-                     nothing. An X that is there and inert is the defect this project hunts. -->
-                <DataTrigger Value="False"
-                             Binding="{Binding DataContext.Tabs.CanClose,
-                                       RelativeSource={RelativeSource AncestorType=UserControl}}">
-                  <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsActive}" Value="True">
-                  <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Surface}" />
-                </DataTrigger>
-                <Trigger SourceName="Chip" Property="IsMouseOver" Value="True">
-                  <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Hover}" />
-                </Trigger>
-              </DataTemplate.Triggers>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        </DockPanel>
-      </Border>
+  <Border Padding="2,0,6,0" Style="{StaticResource ChromeBar}">
+    <!-- A StackPanel, not a DockPanel: docking the button Right threw it to the far edge of the
+         caption band, half a window away from the tab it adds one to. -->
+    <StackPanel Orientation="Horizontal">
+      <ItemsControl ItemsSource="{Binding Tabs.Items}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <!-- MinWidth because a tab holding a short name would otherwise be a pill barely
+                 wider than the word, adrift in an empty caption bar. Explorer's are this size
+                 whatever is in them, and that is what makes a strip read as a strip. -->
+            <Border x:Name="Chip" MinWidth="150" Height="30" Margin="0,0,2,0"
+                    CornerRadius="6,6,0,0" Padding="10,0" Background="Transparent"
+                    MouseDown="OnTabMouseDown" MouseMove="OnTabMouseMove"
+                    AllowDrop="True" Drop="OnTabDrop" ToolTip="{Binding Path}">
+              <DockPanel LastChildFill="True">
+                <Button x:Name="CloseChip" DockPanel.Dock="Right" Width="22" Height="22" Padding="0"
+                        Style="{StaticResource FlatButton}" VerticalAlignment="Center"
+                        ToolTip="Close tab (Ctrl+W)" CommandParameter="{Binding}"
+                        Command="{Binding DataContext.Tabs.CloseTabCommand,
+                                  RelativeSource={RelativeSource AncestorType=UserControl}}">
+                  <TextBlock Style="{StaticResource Glyph}" FontSize="9" Text="&#xE711;" />
+                </Button>
+                <TextBlock Style="{StaticResource Glyph}" DockPanel.Dock="Left" Text="&#xE8B7;"
+                           FontSize="13" Margin="0,0,8,0" Foreground="{DynamicResource Accent}" />
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" Margin="0,0,6,0"
+                           TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+            </Border>
+            <DataTemplate.Triggers>
+              <!-- The last tab cannot be closed, so it does not get a button that would do
+                   nothing. An X that is there and inert is the defect this project hunts. -->
+              <DataTrigger Value="False"
+                           Binding="{Binding DataContext.Tabs.CanClose,
+                                     RelativeSource={RelativeSource AncestorType=UserControl}}">
+                <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
+              </DataTrigger>
+              <Trigger SourceName="Chip" Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Hover}" />
+              </Trigger>
+              <!-- Last, so it outranks hover: the tab you are on should not change colour when
+                   the pointer crosses it, which reads as it being about to do something. -->
+              <DataTrigger Binding="{Binding IsActive}" Value="True">
+                <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Surface}" />
+              </DataTrigger>
+            </DataTemplate.Triggers>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <Button Style="{StaticResource FlatButton}" Width="32" Height="30" Padding="0"
+              Margin="4,0,0,0" VerticalAlignment="Bottom" ToolTip="New tab (Ctrl+T)"
+              Command="{Binding Tabs.NewTabCommand}">
+        <TextBlock Style="{StaticResource Glyph}" FontSize="12" Text="&#xE710;" />
+      </Button>
+    </StackPanel>
+  </Border>
 </UserControl>
