@@ -13,6 +13,7 @@ namespace Oan.Tests;
 /// "these two icons are not the same image", never "this icon looks like that".
 /// The context menu and the shell verbs put UI on screen and are not covered here.
 /// </summary>
+[Collection(DiskBound.Name)]
 public class ShellIconsTests
 {
     [Fact]

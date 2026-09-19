@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Oan.Tests;
 
+[Collection(DiskBound.Name)]
 public class PlaceViewModelTests
 {
     const long Gb = 1024L * 1024 * 1024;

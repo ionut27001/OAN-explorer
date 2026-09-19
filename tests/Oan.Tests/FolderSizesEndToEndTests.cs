@@ -81,7 +81,11 @@ public class FolderSizesEndToEndTests
 
         var vm = new MainViewModel(new NoOps(), new Settings());
         await vm.NavigateAsync(temp.Root);
-        Assert.True(Settles(() => Row(vm, "one").SortSize == 700), "never measured the first time");
+        // Both, not just the first: a measurement still in flight when we navigate away is
+        // abandoned on purpose, so it never reaches the cache and cannot be waiting on the way
+        // back. Waiting for one of the two made this pass or fail on how busy the machine was.
+        Assert.True(Settles(() => Row(vm, "one").SortSize == 700 && Row(vm, "two").SortSize == 40),
+            "never measured the first time");
 
         await vm.NavigateAsync(Path.Combine(temp.Root, "one"));
         await vm.NavigateAsync(temp.Root);

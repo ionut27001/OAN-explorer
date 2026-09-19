@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Input;
+using System.Windows.Media;
+using Oan.App.Platform;
 using Oan.Core.Navigation;
 
 namespace Oan.App.ViewModels;
@@ -15,6 +17,7 @@ public sealed class TabViewModel : Observable
 {
     private string _path = "";
     private bool _isActive;
+    private ImageSource? _icon;
 
     public History History { get; } = new();
 
@@ -26,8 +29,37 @@ public sealed class TabViewModel : Observable
         get => _path;
         set
         {
-            if (Set(ref _path, value)) OnChanged(nameof(Title));
+            if (!Set(ref _path, value)) return;
+
+            OnChanged(nameof(Title));
+            Request();
         }
+    }
+
+    /// <summary>
+    /// The folder's own icon, which is what Explorer puts on a tab. Null until the shell answers
+    /// and for a tab with nowhere to point yet; the chip shows a plain folder glyph until then.
+    /// </summary>
+    public ImageSource? Icon { get => _icon; private set => Set(ref _icon, value); }
+
+    /// <summary>
+    /// Asked again on every navigation, unlike a sidebar place whose path never moves. An answer
+    /// for a folder the tab has already left is dropped — both the request and the reply land on
+    /// the dispatcher, so reading the path back cannot race the write that changed it.
+    /// </summary>
+    private void Request()
+    {
+        var wanted = _path;
+        if (wanted.Length == 0)
+        {
+            Icon = null;
+            return;
+        }
+
+        IconLoader.Load(wanted, isDirectory: true, 16, icon =>
+        {
+            if (_path == wanted) Icon = icon;
+        });
     }
 
     /// <summary>

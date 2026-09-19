@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Oan.Tests;
 
+[Collection(DiskBound.Name)]
 public class TabsTests
 {
     private static TabsViewModel With(params string[] paths)
@@ -136,5 +137,49 @@ public class TabsTests
         var tabs = With(@"C:\Users\oance\Downloads");
 
         Assert.Equal("Downloads", tabs.Items[0].Title);
+    }
+
+    /// <summary>
+    /// Explorer puts the folder's own icon on each tab; ours drew one hardcoded glyph on all of
+    /// them. Two assertions, and the second is the one that matters: a tab's path moves, unlike a
+    /// sidebar place's, so an icon fetched once and latched would be wrong from the first
+    /// navigation onward.
+    /// </summary>
+    [Fact]
+    public void A_tab_carries_the_icon_of_the_folder_it_is_showing()
+    {
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        Assert.True(Directory.Exists(windows) && Directory.Exists(pictures), "no folders to read");
+
+        var tab = new TabViewModel { Path = pictures };
+        var first = Settle(tab);
+        Assert.NotNull(first);
+
+        tab.Path = windows;
+        var second = Settle(tab, first);
+
+        Assert.NotNull(second);
+        Assert.NotEqual(Bytes(first!), Bytes(second!));
+    }
+
+    private static System.Windows.Media.ImageSource? Settle(
+        TabViewModel tab, System.Windows.Media.ImageSource? was = null)
+    {
+        for (var i = 0; i < 200 && (tab.Icon is null || ReferenceEquals(tab.Icon, was)); i++)
+            Thread.Sleep(20);
+
+        return tab.Icon;
+    }
+
+    private static byte[] Bytes(System.Windows.Media.ImageSource source)
+    {
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(
+            (System.Windows.Media.Imaging.BitmapSource)source));
+
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
     }
 }
