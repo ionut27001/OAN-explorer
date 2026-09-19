@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using Oan.App.ViewModels;
-using Oan.App.Platform;
 using Oan.Core.Sizes;
 
 namespace Oan.App.Controls;
@@ -24,6 +23,26 @@ public sealed class TreemapView : FrameworkElement
 {
     private const double Least = 2;
     private const double Gap = 1;
+
+    /// <summary>Under this a label would be clipped to nonsense, so none is drawn.</summary>
+    private const double LabelWide = 54;
+    private const double LabelTall = 30;
+
+    /// <summary>
+    /// A colour per rectangle, cycled by position. Not by file type: in a folder of folders every
+    /// type is the same and the picture came out one flat blue, which is what made it unreadable.
+    /// Adjacent rectangles differing is the whole job of colour here — the area already says how
+    /// big, the label already says what.
+    /// </summary>
+    private static readonly Color[] Hues =
+    [
+        Color.FromRgb(0x4C, 0xC2, 0xFF), Color.FromRgb(0x7A, 0xD1, 0x8A), Color.FromRgb(0xFF, 0xB4, 0x5C),
+        Color.FromRgb(0xE4, 0x7B, 0xB8), Color.FromRgb(0x9B, 0x8C, 0xFF), Color.FromRgb(0x5F, 0xD4, 0xC4),
+        Color.FromRgb(0xFF, 0x8A, 0x8A), Color.FromRgb(0xC9, 0xD1, 0x62), Color.FromRgb(0x6F, 0xA8, 0xFF),
+        Color.FromRgb(0xD9, 0x9A, 0x6C),
+    ];
+
+    private static readonly Brush[] Fills = Build();
 
     public static readonly DependencyProperty RowsProperty = DependencyProperty.Register(
         nameof(Rows), typeof(IEnumerable<EntryViewModel>), typeof(TreemapView),
@@ -86,7 +105,10 @@ public sealed class TreemapView : FrameworkElement
             if (box.W < Least || box.H < Least) continue;
 
             _placed.Add((known[i], box));
-            dc.DrawRectangle(Fill(known[i]), null, Inset(box));
+
+            var rect = Inset(box);
+            dc.DrawRectangle(Fills[i % Fills.Length], null, rect);
+            Label(dc, known[i], rect);
         }
 
         Outline(dc);
@@ -124,6 +146,10 @@ public sealed class TreemapView : FrameworkElement
     {
         if (d is TreemapView view) view._under = null;
     }
+
+    /// <summary>The row whose rectangle holds this point, or null. Used by the right click,
+    /// which must act on where the pointer is rather than on where it last rested.</summary>
+    public EntryViewModel? RowAt(Point at) => At(at.X, at.Y);
 
     private EntryViewModel? At(Point at) => At(at.X, at.Y);
 
@@ -167,20 +193,46 @@ public sealed class TreemapView : FrameworkElement
         new(box.X + Gap, box.Y + Gap, Math.Max(0, box.W - Gap * 2), Math.Max(0, box.H - Gap * 2));
 
     /// <summary>
-    /// Folders in the accent, files by kind. Colour here says what a thing is, not how big — the
-    /// area already says how big, and saying it twice would leave nothing saying the other.
+    /// The name, and the size under it when there is room for both. Drawn dark on the fill rather
+    /// than in the theme's foreground: the fills are light in either theme, and a light-on-light
+    /// label is the same unreadable picture in a different way.
     /// </summary>
-    private Brush Fill(EntryViewModel row)
+    private void Label(DrawingContext dc, EntryViewModel row, Rect rect)
     {
-        if (row.Entry.IsDirectory) return Brush("Accent");
+        if (rect.Width < LabelWide || rect.Height < LabelTall) return;
 
-        return FileKinds.Of(row.Entry.Extension) switch
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var name = Text(row.Name, 12, dpi, rect.Width - 8);
+        var size = Text(row.SizeText, 11, dpi, rect.Width - 8);
+
+        dc.PushClip(new RectangleGeometry(rect));
+        dc.DrawText(name, new Point(rect.X + 4, rect.Y + 3));
+        if (rect.Height >= LabelTall + name.Height) dc.DrawText(size, new Point(rect.X + 4, rect.Y + 3 + name.Height));
+        dc.Pop();
+    }
+
+    private static FormattedText Text(string text, double size, double dpi, double room)
+    {
+        var label = new FormattedText(text, System.Globalization.CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, new Typeface("Segoe UI"), size, Brushes.Black, dpi)
         {
-            FileKind.Images => Brush("Warning"),
-            FileKind.Video or FileKind.Audio => Brush("Selected"),
-            FileKind.Archives => Brush("ScrollThumbHover"),
-            _ => Brush("FgDim"),
+            MaxLineCount = 1,
+            Trimming = TextTrimming.CharacterEllipsis,
+            MaxTextWidth = Math.Max(1, room),
         };
+        return label;
+    }
+
+    private static Brush[] Build()
+    {
+        var brushes = new Brush[Hues.Length];
+        for (var i = 0; i < Hues.Length; i++)
+        {
+            var brush = new SolidColorBrush(Hues[i]);
+            brush.Freeze();
+            brushes[i] = brush;
+        }
+        return brushes;
     }
 
     private Brush Brush(string key) =>

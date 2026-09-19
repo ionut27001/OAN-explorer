@@ -12,4 +12,7 @@ public partial class Toolbar : UserControl
     public Toolbar() => InitializeComponent();
 
     private void OnMenuButtonClick(object sender, RoutedEventArgs e) => MenuButton.Open(sender);
+
+    private void OnSettingsClick(object sender, RoutedEventArgs e) =>
+        new SettingsWindow(DataContext, Window.GetWindow(this) ?? Application.Current.MainWindow).ShowDialog();
 }

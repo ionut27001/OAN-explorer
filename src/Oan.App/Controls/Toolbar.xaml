@@ -84,6 +84,11 @@
         </StackPanel>
       </Border>
 
+      <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Click="OnSettingsClick"
+              Margin="4,0,0,0" ToolTip="Settings">
+        <TextBlock Style="{StaticResource Glyph}" Text="&#xE713;" />
+      </Button>
+
       <!-- The map draws the sizes the column measured, so it is useless without them and the
            switch says so by being disabled rather than by drawing an empty square. -->
       <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}"

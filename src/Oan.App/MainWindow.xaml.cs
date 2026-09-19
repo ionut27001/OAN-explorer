@@ -40,6 +40,11 @@ public partial class MainWindow : Window
 
         ApplyViewMode();
         Map.Opened += _vm.Open;
+        _vm.Look.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppearanceViewModel.Treemap)) ApplyMapHeight();
+        };
+        ApplyMapHeight();
 
         Loaded += (_, _) =>
         {
@@ -54,6 +59,34 @@ public partial class MainWindow : Window
     /// same view being handed to it twice. So this one property is set here instead.
     /// </summary>
     private void ApplyViewMode() => List.View = _vm.Look.IsDetails ? (ViewBase)FindResource("DetailsView") : null;
+
+    /// <summary>
+    /// The panel opens to a third of the page and can be dragged from there. A star height would
+    /// fight the splitter, which writes a pixel height back into the row it moves.
+    /// </summary>
+    private void ApplyMapHeight() =>
+        MapRow.Height = _vm.Look.Treemap ? new GridLength(Math.Max(160, Body.ActualHeight / 3)) : new GridLength(0);
+
+    /// <summary>
+    /// A rectangle answers a right click the way its row does: it becomes the selection, and the
+    /// list's own menu opens on it. One menu, so nothing can be offered in one place and missing
+    /// in the other.
+    /// </summary>
+    private void OnMapRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (Map.RowAt(e.GetPosition(Map)) is not { } row) return;
+
+        _vm.Selection = [row];
+        List.SelectedItems.Clear();
+        List.SelectedItems.Add(row);
+
+        if (List.ContextMenu is not { } menu) return;
+
+        menu.PlacementTarget = Map;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
