@@ -1,0 +1,58 @@
+<!-- The details view: the four columns and the headers that say which one the list is ordered
+     by. Here rather than in the window's own resources because it is a table definition, not a
+     window layout, and MainWindow.xaml is the file that keeps outgrowing its limit.
+
+     The header's Content stays the plain word - "Name", "Size", "Kind", "Modified" - because the
+     click handler parses it into a SortKey. The arrow lives in the HeaderTemplate, where it
+     cannot break that parse. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <DataTemplate x:Key="NameHeaderTemplate">
+      <TextBlock Text="{Binding DataContext.Sort.NameHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+    </DataTemplate>
+    <DataTemplate x:Key="SizeHeaderTemplate">
+      <TextBlock Text="{Binding DataContext.Sort.SizeHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+    </DataTemplate>
+    <DataTemplate x:Key="KindHeaderTemplate">
+      <TextBlock Text="{Binding DataContext.Sort.KindHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+    </DataTemplate>
+    <DataTemplate x:Key="ModifiedHeaderTemplate">
+      <TextBlock Text="{Binding DataContext.Sort.ModifiedHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+    </DataTemplate>
+
+    <GridView x:Key="DetailsView" AllowsColumnReorder="False">
+      <GridViewColumn Header="Name" HeaderTemplate="{StaticResource NameHeaderTemplate}" Width="380">
+        <GridViewColumn.CellTemplate>
+          <DataTemplate>
+            <StackPanel x:Name="Cell" Orientation="Horizontal">
+              <Image Width="16" Height="16" Margin="0,0,10,0" Source="{Binding Icon}"
+                     RenderOptions.BitmapScalingMode="HighQuality" />
+              <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+              <DataTrigger Binding="{Binding IsHidden}" Value="True">
+                <Setter TargetName="Cell" Property="Opacity" Value="0.55" />
+              </DataTrigger>
+            </DataTemplate.Triggers>
+          </DataTemplate>
+        </GridViewColumn.CellTemplate>
+      </GridViewColumn>
+
+      <GridViewColumn Header="Size" HeaderTemplate="{StaticResource SizeHeaderTemplate}" Width="100">
+        <GridViewColumn.CellTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding SizeText}" HorizontalAlignment="Right" Margin="0,0,10,0"
+                       ToolTip="{Binding SizeTip}" />
+          </DataTemplate>
+        </GridViewColumn.CellTemplate>
+      </GridViewColumn>
+
+      <GridViewColumn Header="Kind" HeaderTemplate="{StaticResource KindHeaderTemplate}" Width="140"
+                      DisplayMemberBinding="{Binding KindText}" />
+      <GridViewColumn Header="Modified" HeaderTemplate="{StaticResource ModifiedHeaderTemplate}" Width="170"
+                      DisplayMemberBinding="{Binding ModifiedText}" />
+    </GridView>
+
+</ResourceDictionary>

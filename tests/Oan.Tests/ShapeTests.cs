@@ -36,9 +36,6 @@ public class ShapeTests
             "Search, the sidebar, the toolbar, the path rules and now file operations have gone. " +
             "Navigation, selection, the clipboard flag and settings are what is left."),
 
-        // 531 when the toolbar was still inline; it is its own control now. The breadcrumb and
-        // search row is the last block in here big enough to be worth moving.
-        ("src/Oan.App/MainWindow.xaml", 426, "One window's markup. XAML does not factor the way code does."),
 
     ];
 

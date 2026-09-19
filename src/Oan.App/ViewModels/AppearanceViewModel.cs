@@ -47,6 +47,24 @@ public sealed class AppearanceViewModel(Settings settings, Action remember) : Ob
 
     public bool IsDetails => IconSize == 16;
 
+    /// <summary>
+    /// The folder drawn as areas rather than listed. Remembered, because someone hunting disk
+    /// space is doing it across several folders and having to switch back each time is the
+    /// feature getting in its own way.
+    /// </summary>
+    public bool Treemap
+    {
+        get => settings.Treemap;
+        set
+        {
+            if (settings.Treemap == value) return;
+
+            settings.Treemap = value;
+            OnChanged();
+            remember();
+        }
+    }
+
     /// <summary>The tile a grid item is laid out in: the icon, then room for two lines of name.</summary>
     public double TileWidth => IconSize + 48;
 

@@ -63,7 +63,8 @@ public class SortByColumnTests
             Assert.True(Enum.TryParse<SortKey>(header, out _), $"header '{header}' parses to no sort key");
 
         // And the markup still uses exactly those, since the handler matches on the header text.
-        var xaml = await File.ReadAllTextAsync(Path.Combine(Repo.Root, "src/Oan.App/MainWindow.xaml"));
+        var xaml = await File.ReadAllTextAsync(
+            Path.Combine(Repo.Root, "src/Oan.App/Themes/FileColumns.xaml"));
         foreach (var header in headers)
             Assert.Contains($"<GridViewColumn Header=\"{header}\"", xaml);
     }

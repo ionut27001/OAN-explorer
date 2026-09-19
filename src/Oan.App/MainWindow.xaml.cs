@@ -39,6 +39,7 @@ public partial class MainWindow : Window
         };
 
         ApplyViewMode();
+        Map.Opened += _vm.Open;
 
         Loaded += (_, _) =>
         {

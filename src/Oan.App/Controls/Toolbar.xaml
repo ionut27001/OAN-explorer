@@ -84,6 +84,17 @@
         </StackPanel>
       </Border>
 
+      <!-- The map draws the sizes the column measured, so it is useless without them and the
+           switch says so by being disabled rather than by drawing an empty square. -->
+      <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}"
+                    IsChecked="{Binding Look.Treemap}" IsEnabled="{Binding FolderSizes.On}"
+                    ToolTip="Show this folder as areas, biggest first">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xF0E2;" />
+          <TextBlock Text="Map" Margin="6,0,0,0" />
+        </StackPanel>
+      </ToggleButton>
+
       <!-- Off by default because it is expensive, not because it is rare: a folder's size is a
            full walk of everything under it. Measured, the whole user profile is 7.4s. -->
       <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}"

@@ -22,52 +22,6 @@
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="Show" />
 
-    <DataTemplate x:Key="NameHeaderTemplate">
-      <TextBlock Text="{Binding DataContext.Sort.NameHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
-    </DataTemplate>
-    <DataTemplate x:Key="SizeHeaderTemplate">
-      <TextBlock Text="{Binding DataContext.Sort.SizeHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
-    </DataTemplate>
-    <DataTemplate x:Key="KindHeaderTemplate">
-      <TextBlock Text="{Binding DataContext.Sort.KindHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
-    </DataTemplate>
-    <DataTemplate x:Key="ModifiedHeaderTemplate">
-      <TextBlock Text="{Binding DataContext.Sort.ModifiedHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
-    </DataTemplate>
-
-    <GridView x:Key="DetailsView" AllowsColumnReorder="False">
-      <GridViewColumn Header="Name" HeaderTemplate="{StaticResource NameHeaderTemplate}" Width="380">
-        <GridViewColumn.CellTemplate>
-          <DataTemplate>
-            <StackPanel x:Name="Cell" Orientation="Horizontal">
-              <Image Width="16" Height="16" Margin="0,0,10,0" Source="{Binding Icon}"
-                     RenderOptions.BitmapScalingMode="HighQuality" />
-              <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                         TextTrimming="CharacterEllipsis" />
-            </StackPanel>
-            <DataTemplate.Triggers>
-              <DataTrigger Binding="{Binding IsHidden}" Value="True">
-                <Setter TargetName="Cell" Property="Opacity" Value="0.55" />
-              </DataTrigger>
-            </DataTemplate.Triggers>
-          </DataTemplate>
-        </GridViewColumn.CellTemplate>
-      </GridViewColumn>
-
-      <GridViewColumn Header="Size" HeaderTemplate="{StaticResource SizeHeaderTemplate}" Width="100">
-        <GridViewColumn.CellTemplate>
-          <DataTemplate>
-            <TextBlock Text="{Binding SizeText}" HorizontalAlignment="Right" Margin="0,0,10,0"
-                       ToolTip="{Binding SizeTip}" />
-          </DataTemplate>
-        </GridViewColumn.CellTemplate>
-      </GridViewColumn>
-
-      <GridViewColumn Header="Kind" HeaderTemplate="{StaticResource KindHeaderTemplate}" Width="140"
-                      DisplayMemberBinding="{Binding KindText}" />
-      <GridViewColumn Header="Modified" HeaderTemplate="{StaticResource ModifiedHeaderTemplate}" Width="170"
-                      DisplayMemberBinding="{Binding ModifiedText}" />
-    </GridView>
 
     <!-- The icon is sized explicitly rather than by the bitmap: a 256px request can legitimately
          come back as a cropped 48px image, and a tile that sized itself would then be a small
@@ -350,6 +304,8 @@
       <Border Grid.Column="2" Background="{DynamicResource Surface}" ClipToBounds="True"
               BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
         <Grid>
+          <ctl:TreemapView x:Name="Map" Rows="{Binding Rows}" Panel.ZIndex="1"
+                           Visibility="{Binding Look.Treemap, Converter={StaticResource Show}}" />
           <ListView x:Name="List" ItemsSource="{Binding Rows}" Style="{StaticResource FileList}"
                     SelectionMode="Extended"
                     IsTextSearchEnabled="True" TextSearch.TextPath="Name" AllowDrop="True"

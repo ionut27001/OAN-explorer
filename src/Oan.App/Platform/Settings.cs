@@ -33,6 +33,10 @@ public sealed class Settings
     /// until you find a switch is a size column nobody knows exists.</summary>
     public bool FolderSizes { get; set; } = true;
 
+    /// <summary>Show the folder as areas instead of as a list. Off: the list is what a file
+    /// manager is for, and the map is for the question "where did the space go".</summary>
+    public bool Treemap { get; set; }
+
     public static string DefaultPath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OAN", "settings.json");
 
