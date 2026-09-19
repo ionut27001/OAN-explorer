@@ -27,7 +27,6 @@ public sealed class MainViewModel : Observable
 {
     private readonly IFileOperations _ops;
     private readonly Settings _settings;
-    private readonly History _history = new();
     private CancellationTokenSource? _load;
     /// <summary>Hits are appended in batches: one notification per hit would spend the whole
     /// search in layout on a folder that returns thousands.</summary>
@@ -62,8 +61,11 @@ public sealed class MainViewModel : Observable
         Mounts = mounts ?? new MountsViewModel();
         Mounts.Bind(path => Run(() => NavigateAsync(path)), Report, () => CurrentPath);
 
-        BackCommand = new RelayCommand(() => Go(_history.Back()), () => _history.CanGoBack);
-        ForwardCommand = new RelayCommand(() => Go(_history.Forward()), () => _history.CanGoForward);
+        BackCommand = new RelayCommand(() => Go(Tabs.Active.History.Back()), () => Tabs.Active.History.CanGoBack);
+        ForwardCommand = new RelayCommand(() => Go(Tabs.Active.History.Forward()), () => Tabs.Active.History.CanGoForward);
+
+        // Switching tabs loads without recording: that folder is already in this tab's history.
+        Tabs.Switched += path => Run(() => LoadAsync(path));
         UpCommand = new RelayCommand(GoUp, () => Archive.Active || ParentPath is not null);
         RefreshCommand = new RelayCommand(() => { Notice = null; Run(ReloadAsync); }, () => CurrentPath.Length > 0);
 
@@ -121,6 +123,7 @@ public sealed class MainViewModel : Observable
     public SearchViewModel Search { get; } = new();
     public ArchiveViewModel Archive { get; } = new();
     public SortViewModel Sort { get; } = new();
+    public TabsViewModel Tabs { get; } = new();
     public AppearanceViewModel Look { get; }
 
     public ICommand BackCommand { get; }
@@ -288,7 +291,7 @@ public sealed class MainViewModel : Observable
 
     public async Task NavigateAsync(string path)
     {
-        var target = Resolve(path);
+        var target = Paths.Resolve(path);
         if (target is null)
         {
             Notice = $"\"{path}\" is not a folder we can open.";
@@ -296,7 +299,7 @@ public sealed class MainViewModel : Observable
         }
 
         Notice = null;
-        _history.Visit(target);
+        Tabs.Active.History.Visit(target);
         await LoadAsync(target);
     }
 
@@ -511,13 +514,14 @@ public sealed class MainViewModel : Observable
             // not come and go while the window is open, and rebuilding them would throw away every
             // size measured so far.
             var sidebar = await Task.Run(
-                () => (Free: FreeSpace(path), Quick: Places.NeedsQuick ? Oan.Core.FileSystem.Places.Quick() : null,
+                () => (Free: Paths.FreeSpace(path), Quick: Places.NeedsQuick ? Oan.Core.FileSystem.Places.Quick() : null,
                        Drives: Oan.Core.FileSystem.Places.Drives()),
                 cts.Token);
 
             if (cts.Token.IsCancellationRequested) return;
 
             Show(path, listing, sidebar.Quick, sidebar.Drives, sidebar.Free);
+        Tabs.Visited(path);
         }
         catch (OperationCanceledException)
         {
@@ -843,32 +847,4 @@ public sealed class MainViewModel : Observable
         return crumbs;
     }
 
-    private static string? Resolve(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path)) return null;
-
-        try
-        {
-            var expanded = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
-            var full = Path.GetFullPath(expanded);
-            return Directory.Exists(full) ? full : null;
-        }
-        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException or IOException)
-        {
-            return null;
-        }
-    }
-
-    private static long? FreeSpace(string path)
-    {
-        try
-        {
-            var root = Path.GetPathRoot(path);
-            return root is null ? null : new DriveInfo(root).AvailableFreeSpace;
-        }
-        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
 }

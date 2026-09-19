@@ -153,9 +153,15 @@
     <KeyBinding Key="X" Modifiers="Control" Command="{Binding CutCommand}" />
     <KeyBinding Key="V" Modifiers="Control" Command="{Binding PasteCommand}" />
     <KeyBinding Key="N" Modifiers="Control+Shift" Command="{Binding NewFolderCommand}" />
+    <KeyBinding Key="T" Modifiers="Control" Command="{Binding Tabs.NewTabCommand}" />
+    <KeyBinding Key="W" Modifiers="Control" Command="{Binding Tabs.CloseTabCommand}" />
+    <KeyBinding Key="Tab" Modifiers="Control" Command="{Binding Tabs.NextTabCommand}" />
+    <KeyBinding Key="Tab" Modifiers="Control+Shift" Command="{Binding Tabs.PreviousTabCommand}" />
   </Window.InputBindings>
 
   <DockPanel>
+
+    <ctl:TabStrip DockPanel.Dock="Top" />
 
     <Border DockPanel.Dock="Top" Padding="8,8,8,4" Style="{StaticResource ChromeBar}">
       <Grid>
@@ -455,6 +461,7 @@
                     PreviewMouseRightButtonDown="OnListRightButtonDown"
                     PreviewMouseMove="OnListMouseMove"
                     PreviewMouseLeftButtonUp="OnListMouseUp"
+                    MouseDown="OnListMiddleDown"
                     ContextMenuOpening="OnListContextMenuOpening"
                     DragOver="OnListDragOver"
                     Drop="OnListDrop"

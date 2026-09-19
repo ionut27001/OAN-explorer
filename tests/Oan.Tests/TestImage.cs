@@ -7,7 +7,14 @@ namespace Oan.Tests;
 /// run at once. They share one machine and one set of drive letters, and a test asserting the
 /// letters are back where they started cannot tell its own mount from another test's.
 /// </summary>
-[CollectionDefinition(Mounting.Name)]
+// DisableParallelization, and it is the whole point: a drive letter belongs to the machine, not
+// to a test. Without it xunit runs these classes alongside every other, and an assertion that the
+// drives are back to what they were fails on a letter it never created.
+//
+// MEASURED before blaming timing: a detached volume's letter disappears in 26-39 ms over three
+// runs, while the failing assertion had already waited three seconds. The wait was never the
+// problem.
+[CollectionDefinition(Mounting.Name, DisableParallelization = true)]
 public sealed class Mounting
 {
     public const string Name = "mounting";

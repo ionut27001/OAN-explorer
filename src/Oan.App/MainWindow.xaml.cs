@@ -211,6 +211,16 @@ public partial class MainWindow : Window
         menu.IsOpen = true;
     }
 
+
+    /// <summary>Middle-click a folder to open it in a new tab, the way a browser opens a link.</summary>
+    private void OnListMiddleDown(object sender, MouseButtonEventArgs e)
+    {
+        if (RowAt(e.OriginalSource) is not { Entry.IsDirectory: true } row) return;
+
+        _vm.Tabs.Open(row.Entry.FullPath);
+        e.Handled = true;
+    }
+
     private void OnListMouseDown(object sender, MouseButtonEventArgs e)
     {
         _pressed = e.GetPosition(this);

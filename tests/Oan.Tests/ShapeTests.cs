@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace Oan.Tests;
@@ -9,9 +9,9 @@ namespace Oan.Tests;
 /// The previous OAN reached 53,000 lines without being able to copy a file, one reasonable-looking
 /// mechanism at a time. A long file and a long method are how that starts, so the limit is checked
 /// rather than remembered. Exceptions are listed with a reason and a line count they may not
-/// exceed — a limit with an open-ended exception list is not a limit.
+/// exceed â€” a limit with an open-ended exception list is not a limit.
 /// Not part of the normal test run. Building a mechanism means trying things, and a length
-/// limit going red halfway through is noise, not help — so this is the step you take when the
+/// limit going red halfway through is noise, not help â€” so this is the step you take when the
 /// mechanism is finished and works:
 ///
 ///     dotnet test --filter "Category=Shape"
@@ -30,8 +30,8 @@ public class ShapeTests
         // 928 -> 965 when mounting landed, which is what tripped this test; search moved out to
         // SearchViewModel and it is 904 now. The ceiling follows it down each time, so the only
         // direction this file can go is smaller. Still holding navigation, selection, clipboard,
-        // file operations, the sidebar and settings — clipboard is the next one out.
-        ("src/Oan.App/ViewModels/MainViewModel.cs", 875,
+        // file operations, the sidebar and settings â€” clipboard is the next one out.
+        ("src/Oan.App/ViewModels/MainViewModel.cs", 850,
             "Several concerns still in one class; the ceiling ratchets down as they leave. " +
             "Search and the sidebar have gone; file operations are the next."),
 
@@ -99,14 +99,14 @@ public class ShapeTests
 
                 // A member body opens when depth crosses 1 -> 2: the namespace is file-scoped,
                 // so the type is 1 and the member is 2. Testing `depth == 2` before adding, as
-                // the first version did, never matched — the brace that enters the body is read
+                // the first version did, never matched â€” the brace that enters the body is read
                 // while depth is still 1, and the test silently measured nothing.
                 if (before == 1 && depth == 2 && start < 0 && !DeclaresType(lines, i)) start = i;
 
                 if (start >= 0 && depth <= 1)
                 {
                     if (i - start > MaxMethodLines)
-                        over.Add($"{Repo.Relative(file.FullName)}:{start + 1} — {i - start} lines");
+                        over.Add($"{Repo.Relative(file.FullName)}:{start + 1} â€” {i - start} lines");
                     start = -1;
                 }
             }
