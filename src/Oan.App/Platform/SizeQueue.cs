@@ -30,7 +30,7 @@ internal sealed class SizeQueue : IDisposable
     {
         _done = done;
         _wanted = wanted;
-        _sizes = new FolderSize(TimeSpan.FromMinutes(5), capacity);
+        _sizes = new FolderSize(TimeSpan.FromHours(1), capacity);
         new Thread(Pump)
         {
             IsBackground = true,

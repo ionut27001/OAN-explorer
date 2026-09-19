@@ -15,6 +15,9 @@ public sealed class SortViewModel : Observable
 
     public event Action? Changed;
 
+    /// <summary>What the list is ordered by. Sizes arrive late, so somebody has to ask.</summary>
+    public SortKey Key => _key;
+
     public string NameHeader => Header("Name", SortKey.Name);
     public string SizeHeader => Header("Size", SortKey.Size);
     public string KindHeader => Header("Type", SortKey.Kind);
@@ -31,6 +34,18 @@ public sealed class SortViewModel : Observable
         OnChanged(nameof(KindHeader));
         OnChanged(nameof(ModifiedHeader));
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// The same rows in order, or null when they were already in it. Folder sizes arrive seconds
+    /// after the rows were placed, so an order that depends on them has to be redone; the rows
+    /// themselves are handed back untouched, which is what keeps their icons from being refetched.
+    /// </summary>
+    public EntryViewModel[]? Reorder(IReadOnlyList<EntryViewModel> rows)
+    {
+        var sorted = rows.ToArray();
+        Array.Sort(sorted, Compare);
+        return sorted.SequenceEqual(rows) ? null : sorted;
     }
 
     public int Compare(EntryViewModel x, EntryViewModel y)

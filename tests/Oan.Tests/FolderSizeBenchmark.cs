@@ -17,6 +17,7 @@ namespace Oan.Tests;
 /// Point it elsewhere with OAN_SIZE_BENCH_ROOTS (semicolon-separated).
 /// </summary>
 [Trait("Category", "Benchmark")]
+[Collection(DiskBound.Name)]
 public sealed class FolderSizeBenchmark(ITestOutputHelper output)
 {
     static string[] Roots =>

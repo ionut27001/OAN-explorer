@@ -12,6 +12,7 @@ namespace Oan.Tests;
 /// ten of the user profile's sixty-five folders cannot be read at all and four more can only be
 /// given a floor, so "blank", "—" and "≥ 1.2 GB" each have to mean their own thing.
 /// </summary>
+[Collection(DiskBound.Name)]
 public class FolderSizesTests
 {
     [Fact]

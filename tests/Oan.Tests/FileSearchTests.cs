@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Oan.Tests;
 
+[Collection(DiskBound.Name)]
 public class FileSearchTests
 {
     static SearchQuery Named(string root, string name, NameMatch mode = NameMatch.Substring) =>

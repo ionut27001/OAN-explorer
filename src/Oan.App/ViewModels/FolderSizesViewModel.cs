@@ -26,12 +26,17 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
 
     private static readonly TimeSpan Least = TimeSpan.FromSeconds(2);
 
+    /// <summary>How long a remembered size is shown without a second thought before it is quietly
+    /// checked again. Only matters for folders left behind, where nothing was watching.</summary>
+    private static readonly TimeSpan Trust = TimeSpan.FromSeconds(30);
+
     private readonly ConcurrentDictionary<string, EntryViewModel> _rows = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, (DateTime At, TimeSpan Took)> _last = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, byte> _stale = new(StringComparer.OrdinalIgnoreCase);
     private readonly SizeQueue _queue;
     private readonly FolderChanges _changes;
     private readonly Timer _retry;
+    private readonly Timer _settle;
     private readonly Settings _settings;
     private readonly Action _remember;
     private string _folder = "";
@@ -46,7 +51,14 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
         _queue = new SizeQueue(Measured, path => _rows.ContainsKey(path), capacity: 512);
         _changes = new FolderChanges(Changed);
         _retry = new Timer(_ => Changed([.. _stale.Keys]), null, Timeout.Infinite, Timeout.Infinite);
+        _settle = new Timer(_ => Settled?.Invoke(), null, Timeout.Infinite, Timeout.Infinite);
     }
+
+    /// <summary>
+    /// Raised a moment after the last size landed. Sizes arrive long after the rows are in order,
+    /// so whoever put them in order has to be told it can do it again.
+    /// </summary>
+    public event Action? Settled;
 
     /// <summary>Whether this listing's folders are measured at all. Remembered between runs.</summary>
     public bool On
@@ -78,12 +90,12 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
         foreach (var row in rows)
         {
             if (!row.Entry.IsDirectory) continue;
-
             _rows[row.Entry.FullPath] = row;
-
-            // Free: an answer measured minutes ago is on the row before anything is asked again.
-            if (_queue.Cached(row.Entry.FullPath) is { } known) row.Measured(known);
         }
+
+        // Before anything is queued, because whoever called this is about to put the rows in
+        // order and an order decided on sizes nobody has painted yet is an order by nothing.
+        Restore();
 
         _changes.Watch(On && _rows.Count > 0 ? folder : null);
         if (On) MeasureAll();
@@ -91,9 +103,28 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
 
     public void Dispose()
     {
+        _settle.Dispose();
         _retry.Dispose();
         _changes.Dispose();
         _queue.Dispose();
+    }
+
+    /// <summary>
+    /// Puts back what is already known, at no cost, and quietly queues a fresh walk for anything
+    /// known but going stale. Quietly matters: a row that already shows a number must not blink
+    /// back to an ellipsis every time you walk into the folder — the number is still true enough
+    /// to read while a better one is on its way.
+    /// </summary>
+    private void Restore()
+    {
+        foreach (var row in _rows.Values)
+        {
+            if (_queue.Cached(row.Entry.FullPath) is not { } known) continue;
+
+            row.Measured(known);
+            _last[known.Path] = (known.MeasuredAt, known.Took);
+            if (On && DateTime.UtcNow - known.MeasuredAt > Trust) Quietly(row);
+        }
     }
 
     private void MeasureAll()
@@ -109,6 +140,12 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
     private void Measure(EntryViewModel row)
     {
         row.Measuring();
+        Quietly(row);
+    }
+
+    private void Quietly(EntryViewModel row)
+    {
+        _queue.Forget(row.Entry.FullPath);
         _queue.Add(row.Entry.FullPath);
     }
 
@@ -149,8 +186,10 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
             }
 
             _stale.TryRemove(path, out _);
-            _queue.Forget(path);
-            Measure(row);
+
+            // Quietly: the row keeps the number it has until a better one arrives. A refresh is
+            // not a reason to make the column blink.
+            Quietly(row);
         }
 
         if (soonest != TimeSpan.MaxValue)
@@ -177,5 +216,7 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
     {
         _last[result.Path] = (DateTime.UtcNow, result.Took);
         if (_rows.TryGetValue(result.Path, out var row)) row.Measured(result);
+
+        _settle.Change(TimeSpan.FromMilliseconds(200), Timeout.InfiniteTimeSpan);
     }
 }

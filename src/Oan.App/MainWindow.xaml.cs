@@ -215,10 +215,12 @@ public partial class MainWindow : Window
 
     private void OnListMouseDown(object sender, MouseButtonEventArgs e)
     {
-        // The column headers are inside the list, so a press on one tunnels through here first.
-        // Starting a rubber band there captured the mouse and marked the event handled, so the
-        // header never raised its own click and sorting by clicking a column did nothing at all.
-        if (Ancestor.Of<GridViewColumnHeader>(e.OriginalSource) is not null) return;
+        // The column headers and the scroll bars are inside the list, so a press on either
+        // tunnels through here first. Starting a rubber band there captured the mouse and marked
+        // the event handled: the header never raised its own click, which is why sorting by
+        // clicking a column did nothing, and dragging the scroll bar drew a selection box.
+        // The band belongs to the area the rows are drawn in, and to nothing else.
+        if (Ancestor.Of<ScrollContentPresenter>(e.OriginalSource) is null) return;
 
         _pressed = e.GetPosition(this);
         _mayDrag = RowAt(e.OriginalSource) is not null;

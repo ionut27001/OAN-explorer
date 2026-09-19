@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using Oan.App.Controls;
@@ -21,23 +22,38 @@ public class SortByColumnTests
             Task.FromResult(OperationResult.Refused("not used here"));
     }
 
+    /// <summary>
+    /// The rule the rubber band starts on. Headers and scroll bars are inside the list, and the
+    /// band used to begin on both — which captured the mouse, so the header never raised its own
+    /// click and dragging the scroll bar drew a selection box across the window.
+    /// </summary>
     [Fact]
-    public void A_press_on_a_column_header_is_recognised_as_one_and_not_as_empty_space()
+    public void The_band_starts_only_where_the_rows_are_drawn()
     {
-        var (inHeader, inRow) = Sta(() =>
+        var (onRow, onHeader, onScrollBar) = Sta(() =>
         {
-            var label = new TextBlock { Text = "Size" };
-            var header = new GridViewColumnHeader { Content = label };
-
+            // Measured and arranged, because a presenter's content only becomes its visual child
+            // once it has been through a layout pass.
             var rowLabel = new TextBlock { Text = "notes.txt" };
-            var row = new ListViewItem { Content = rowLabel };
+            var presenter = new ScrollContentPresenter { Content = rowLabel };
+            presenter.Measure(new Size(200, 200));
+            presenter.Arrange(new Rect(0, 0, 200, 200));
 
-            return (Ancestor.Of<GridViewColumnHeader>(label) is not null,
-                    Ancestor.Of<GridViewColumnHeader>(rowLabel) is not null);
+            var headerLabel = new TextBlock { Text = "Size" };
+            _ = new GridViewColumnHeader { Content = headerLabel };
+
+            // The scroll bar's grip, as its own template builds it.
+            var grip = new Thumb();
+            _ = new Track { Thumb = grip };
+
+            return (Ancestor.Of<ScrollContentPresenter>(rowLabel) is not null,
+                    Ancestor.Of<ScrollContentPresenter>(headerLabel) is not null,
+                    Ancestor.Of<ScrollContentPresenter>(grip) is not null);
         });
 
-        Assert.True(inHeader, "a click on the header's own label has to read as the header");
-        Assert.False(inRow, "a click on a row must not read as the header");
+        Assert.True(onRow, "a press on a row is where the band belongs");
+        Assert.False(onHeader, "a press on a column header must not start a band");
+        Assert.False(onScrollBar, "a press on the scroll bar must not start a band");
     }
 
     [Fact]

@@ -72,6 +72,10 @@ public sealed class MainViewModel : Observable
         GoToCommand = new RelayCommand(p => Run(() => NavigateAsync(p as string ?? Address)));
         SortCommand = new RelayCommand(p => Sort.By((SortKey)p!));
         Sort.Changed += Rebuild;
+        FolderSizes.Settled += () =>
+        {
+            if (Sort.Key == SortKey.Size && Sort.Reorder(Rows) is { } bySize) Rows = bySize;
+        };
 
         CopyCommand = new RelayCommand(() => PutOnClipboard(cut: false), () => HasSelection);
         CutCommand = new RelayCommand(() => PutOnClipboard(cut: true), () => HasSelection && CanWriteHere);
@@ -663,11 +667,14 @@ public sealed class MainViewModel : Observable
             source = source.Where(e => e.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase));
 
         var rows = source.Select(e => new EntryViewModel(e, Look.IconSize)).ToArray();
+
+        // Before the sort, not after: it is what puts the known folder sizes back onto the fresh
+        // rows, and sorting by a column whose values have not been filled in yet sorts by nulls.
+        FolderSizes.Show(CurrentPath, rows);
         Array.Sort(rows, Sort.Compare);
 
         Selection = [];
         Rows = rows;
-        FolderSizes.Show(CurrentPath, rows);
 
         // Replacing the rows drops the list's selection; put back whatever survived, so a sort,
         // a refresh or a finished operation does not make the user pick the same items again.
