@@ -9,6 +9,16 @@
         FontFamily="Segoe UI" FontSize="13" TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True" PreviewKeyDown="OnWindowKeyDown">
 
+  <!-- The tab strip lives IN the title bar, where Explorer puts it. Below it, the strip had to
+       appear and disappear with the tab count and the whole page shifted when it did.
+       CaptionHeight is the band that still drags the window; anything clickable inside it opts
+       out with IsHitTestVisibleInChrome. GlassFrameThickness stays 0 so the client area is ours
+       and the Mica behind it is not painted over. -->
+  <WindowChrome.WindowChrome>
+    <WindowChrome CaptionHeight="36" ResizeBorderThickness="6" CornerRadius="0"
+                  GlassFrameThickness="0" UseAeroCaptionButtons="False" />
+  </WindowChrome.WindowChrome>
+
   <Window.Resources>
     <ctl:IsConverter x:Key="Is" />
     <BooleanToVisibilityConverter x:Key="Show" />
@@ -161,7 +171,7 @@
 
   <DockPanel>
 
-    <ctl:TabStrip DockPanel.Dock="Top" />
+    <ctl:TitleBar DockPanel.Dock="Top" />
 
     <Border DockPanel.Dock="Top" Padding="8,8,8,4" Style="{StaticResource ChromeBar}">
       <Grid>

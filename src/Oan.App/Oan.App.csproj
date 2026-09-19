@@ -8,6 +8,8 @@
     <RootNamespace>Oan.App</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Also a resource, not only the exe's icon: the title bar draws it. -->
+    <Resource Include="oan.ico" />
     <ProjectReference Include="..\Oan.Core\Oan.Core.csproj" />
     <InternalsVisibleTo Include="Oan.Tests" />
   </ItemGroup>

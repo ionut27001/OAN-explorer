@@ -107,6 +107,7 @@ public partial class MainWindow : Window
     private void OnSplitterDragged(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e) =>
         ClampSidebar();
 
+
     protected override void OnActivated(EventArgs e)
     {
         base.OnActivated(e);

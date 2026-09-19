@@ -6,8 +6,8 @@
     <BooleanToVisibilityConverter x:Key="Show" />
   </UserControl.Resources>
 
-  <Border DockPanel.Dock="Top" Padding="6,4,6,0" Style="{StaticResource ChromeBar}"
-              Visibility="{Binding Tabs.Many, Converter={StaticResource Show}}">
+  <Border DockPanel.Dock="Top" Padding="2,0,6,0" Style="{StaticResource ChromeBar}"
+  >
         <DockPanel>
         <Button DockPanel.Dock="Right" HorizontalAlignment="Left" Style="{StaticResource FlatButton}"
                 Padding="8,4" Margin="4,0,0,0" ToolTip="New tab (Ctrl+T)"
@@ -26,7 +26,7 @@
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="{Binding Title}" MaxWidth="150" TextTrimming="CharacterEllipsis"
                              VerticalAlignment="Center" />
-                  <Button Margin="8,0,0,0" Padding="3,0" Style="{StaticResource FlatButton}"
+                  <Button x:Name="CloseChip" Margin="8,0,0,0" Padding="3,0" Style="{StaticResource FlatButton}"
                           ToolTip="Close tab (Ctrl+W)" CommandParameter="{Binding}"
                           Command="{Binding DataContext.Tabs.CloseTabCommand,
                                     RelativeSource={RelativeSource AncestorType=UserControl}}">
@@ -35,6 +35,13 @@
                 </StackPanel>
               </Border>
               <DataTemplate.Triggers>
+                <!-- The last tab cannot be closed, so it does not get a button that would do
+                     nothing. An X that is there and inert is the defect this project hunts. -->
+                <DataTrigger Value="False"
+                             Binding="{Binding DataContext.Tabs.CanClose,
+                                       RelativeSource={RelativeSource AncestorType=UserControl}}">
+                  <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                   <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Surface}" />
                 </DataTrigger>
