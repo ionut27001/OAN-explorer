@@ -48,6 +48,15 @@ public sealed class TreemapView : FrameworkElement
     private EntryViewModel? _row;
     private int _tile = -1;
 
+    /// <summary>
+    /// The tiles, drawn once and kept. Hovering only has to change an outline, and re-running the
+    /// whole layout for that was what made the pointer drag: on a folder tree this is tens of
+    /// thousands of rectangles laid out and painted again for every mouse move.
+    /// </summary>
+    private DrawingGroup? _picture;
+    private Size _drawnAt;
+    private double _dpi = 1;
+
     public TreemapView()
     {
         ClipToBounds = true;
@@ -83,18 +92,46 @@ public sealed class TreemapView : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
+        var size = new Size(ActualWidth, ActualHeight);
+        if (_picture is null || _drawnAt != size) Paint(size);
+
+        if (_picture is not null) dc.DrawDrawing(_picture);
+        Outline(dc);
+    }
+
+    /// <summary>How many times the tiles have been laid out. Read by the test that pins the
+    /// thing that made the pointer drag: hovering must not be one of the times.</summary>
+    internal int Paints { get; private set; }
+
+    private void Paint(Size size)
+    {
+        Paints++;
         _shallow.Clear();
         _deep.Clear();
+        _dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
-        dc.DrawRectangle(Brush("Surface"), null, new Rect(0, 0, ActualWidth, ActualHeight));
+        var picture = new DrawingGroup();
+        using (var dc = picture.Open())
+        {
+            dc.DrawRectangle(Brush("Surface"), null, new Rect(0, 0, size.Width, size.Height));
 
-        var area = new Box(0, 0, ActualWidth, ActualHeight);
-        if (area.W <= 0 || area.H <= 0) return;
+            var area = new Box(0, 0, size.Width, size.Height);
+            if (area.W > 0 && area.H > 0)
+            {
+                if (Tree is { Count: > 0 } tree) Nested(dc, tree, -1, area, hue: -1, depth: 0);
+                else Shallow(dc, area);
+            }
+        }
 
-        if (Tree is { Count: > 0 } tree) Nested(dc, tree, -1, area, hue: -1, depth: 0);
-        else Shallow(dc, area);
+        picture.Freeze();
+        _picture = picture;
+        _drawnAt = size;
+    }
 
-        Outline(dc);
+    protected override void OnRenderSizeChanged(SizeChangedInfo info)
+    {
+        _picture = null;
+        base.OnRenderSizeChanged(info);
     }
 
     /// <summary>
@@ -123,19 +160,21 @@ public sealed class TreemapView : FrameworkElement
             if (box.W < Least || box.H < Least) continue;
 
             var index = order[i];
-            var mine = hue < 0 ? i : hue;
+            var name = tree.Name(index);
+            var much = Format.Size(tree.Size[index]);
 
             if (tree.IsFolder(index) && Worth(tree, index, box, depth))
             {
-                // The folder is the darker surround its children sit on, which is the only thing
-                // saying where one folder ends and the next begins.
-                dc.DrawRectangle(Cushions.Surround(mine), null, Rect(box));
-                Nested(dc, tree, index, Shrink(box), mine, depth + 1);
+                // The children fill the folder's whole rectangle, and the folder is a line and a
+                // name drawn over them afterwards. Giving each level a margin instead cost a pixel
+                // a side per level, and six levels down the picture was more gap than tile.
+                Nested(dc, tree, index, Below(box, Cushions.Header(Rect(box))), hue, depth + 1);
+                Cushions.Group(dc, Rect(box), name, much, _dpi);
                 continue;
             }
 
             _deep.Add((tree, index, box));
-            Tile(dc, box, mine, tree.Name(index), Format.Size(tree.Size[index]));
+            Tile(dc, box, Cushions.HueOf(name), name, much);
         }
     }
 
@@ -187,7 +226,7 @@ public sealed class TreemapView : FrameworkElement
         var rect = Rect(box);
         dc.DrawRectangle(Cushions.Fill(hue), null, rect);
         Cushions.Shade(dc, rect);
-        Cushions.Label(dc, what, much, rect, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        Cushions.Label(dc, what, much, rect, _dpi);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -290,6 +329,7 @@ public sealed class TreemapView : FrameworkElement
     {
         if (d is not TreemapView view) return;
 
+        view._picture = null;
         view._row = null;
         view._tile = -1;
         view.ToolTip = null;
@@ -313,17 +353,14 @@ public sealed class TreemapView : FrameworkElement
     private void Say(DrawingContext dc, string text)
     {
         var label = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            new Typeface("Segoe UI"), 13, Brush("FgMuted"), VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            new Typeface("Segoe UI"), 13, Brush("FgMuted"), _dpi);
 
         dc.DrawText(label, new Point((ActualWidth - label.Width) / 2, (ActualHeight - label.Height) / 2));
     }
 
-    /// <summary>
-    /// The frame a folder keeps around its children: one pixel, so it reads as holding them
-    /// without a dark band round everything.
-    /// </summary>
-    private static Box Shrink(Box box) =>
-        new(box.X + 1, box.Y + 1, Math.Max(0, box.W - 2), Math.Max(0, box.H - 2));
+    /// <summary>The box with the folder's name band taken off the top.</summary>
+    private static Box Below(Box box, double band) =>
+        band <= 0 ? box : new Box(box.X, box.Y + band, box.W, Math.Max(0, box.H - band));
 
     private static Rect Rect(Box box) => new(box.X, box.Y, box.W, box.H);
 
