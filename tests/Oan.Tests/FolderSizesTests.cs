@@ -1,4 +1,5 @@
 using System.IO;
+using Oan.App.Platform;
 using Oan.App.ViewModels;
 using Oan.Core.FileSystem;
 using Oan.Core.Model;
@@ -77,17 +78,28 @@ public class FolderSizesTests
     }
 
     [Fact]
+    public void Arriving_at_a_folder_measures_it_without_being_asked()
+    {
+        using var temp = new TempFolder();
+        var inner = Inner(temp, 1000);
+
+        using var sizes = Sizes();
+        var row = Row("inner", FileAttributes.Directory, path: inner);
+        sizes.Show(temp.Root, [row]);
+
+        Assert.True(sizes.On, "the column should start on");
+        Assert.True(Settles(() => row.SortSize == 1000), $"never measured, showed {row.SizeText}");
+    }
+
+    [Fact]
     public void Switching_the_column_off_puts_the_rows_back_to_knowing_nothing()
     {
         using var temp = new TempFolder();
-        temp.AddFolder("inner");
-        File.WriteAllText(Path.Combine(temp.Root, "inner", "a.bin"), new string('x', 1000));
+        var inner = Inner(temp, 1000);
 
-        using var sizes = new FolderSizesViewModel();
-        var row = Row("inner", FileAttributes.Directory, path: Path.Combine(temp.Root, "inner"));
-        sizes.Show([row]);
-
-        sizes.On = true;
+        using var sizes = Sizes();
+        var row = Row("inner", FileAttributes.Directory, path: inner);
+        sizes.Show(temp.Root, [row]);
         Assert.True(Settles(() => row.SortSize == 1000), $"never measured, showed {row.SizeText}");
 
         sizes.On = false;
@@ -96,25 +108,59 @@ public class FolderSizesTests
     }
 
     [Fact]
-    public void A_size_already_known_is_painted_without_the_column_being_on()
+    public void A_size_already_known_is_painted_without_walking_the_folder_again()
     {
         using var temp = new TempFolder();
-        temp.AddFolder("inner");
-        File.WriteAllText(Path.Combine(temp.Root, "inner", "a.bin"), new string('x', 500));
-        var path = Path.Combine(temp.Root, "inner");
+        var inner = Inner(temp, 500);
 
-        using var sizes = new FolderSizesViewModel();
-        var first = Row("inner", FileAttributes.Directory, path: path);
-        sizes.Show([first]);
-        sizes.On = true;
+        using var sizes = Sizes();
+        var first = Row("inner", FileAttributes.Directory, path: inner);
+        sizes.Show(temp.Root, [first]);
         Assert.True(Settles(() => first.SortSize == 500), "never measured");
 
-        // Navigating away and back: same queue, same cache, a fresh row, and the switch is off.
+        // Navigating away and back: same queue, same cache, a fresh row, switched off so nothing
+        // can be walking. The number has to be on the row the moment it is shown.
         sizes.On = false;
-        var again = Row("inner", FileAttributes.Directory, path: path);
-        sizes.Show([again]);
+        var again = Row("inner", FileAttributes.Directory, path: inner);
+        sizes.Show(temp.Root, [again]);
 
         Assert.Equal(500, again.SortSize);
+    }
+
+    [Fact]
+    public void A_folder_that_changes_on_disk_is_measured_again()
+    {
+        using var temp = new TempFolder();
+        var inner = Inner(temp, 400);
+
+        using var sizes = Sizes();
+        var row = Row("inner", FileAttributes.Directory, path: inner);
+        sizes.Show(temp.Root, [row]);
+        Assert.True(Settles(() => row.SortSize == 400), $"never measured, showed {row.SizeText}");
+
+        File.WriteAllText(Path.Combine(inner, "b.bin"), new string('y', 600));
+
+        // Long enough for the watcher to settle and the folder to have served its rest.
+        Assert.True(Settles(() => row.SortSize == 1000, seconds: 12),
+            $"the change was never noticed, still {row.SizeText}");
+    }
+
+    [Fact]
+    public void A_change_at_the_top_level_is_not_a_change_to_any_folder_below_it()
+    {
+        using var temp = new TempFolder();
+        var inner = Inner(temp, 400);
+
+        using var sizes = Sizes();
+        var row = Row("inner", FileAttributes.Directory, path: inner);
+        sizes.Show(temp.Root, [row]);
+        Assert.True(Settles(() => row.SortSize == 400), "never measured");
+
+        // A file dropped beside the folder, not inside it.
+        temp.AddFile("loose.txt", new string('z', 5000));
+        Thread.Sleep(2500);
+
+        Assert.Equal(400, row.SortSize);
     }
 
     [Fact]
@@ -143,9 +189,18 @@ public class FolderSizesTests
             Size = size,
         }, 16);
 
-    private static bool Settles(Func<bool> done)
+    private static FolderSizesViewModel Sizes() => new(new Settings(), () => { });
+
+    private static string Inner(TempFolder temp, int bytes)
     {
-        for (var i = 0; i < 200 && !done(); i++) Thread.Sleep(20);
+        var inner = temp.AddFolder("inner");
+        File.WriteAllText(Path.Combine(inner, "a.bin"), new string('x', bytes));
+        return inner;
+    }
+
+    private static bool Settles(Func<bool> done, int seconds = 4)
+    {
+        for (var i = 0; i < seconds * 50 && !done(); i++) Thread.Sleep(20);
         return done();
     }
 }

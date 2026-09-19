@@ -54,6 +54,7 @@ public sealed class MainViewModel : Observable
         _ops = ops;
         _settings = settings;
         var look = new AppearanceViewModel(settings, Remember);
+        FolderSizes = new FolderSizesViewModel(settings, Remember);
         look.IconSizeChanged = () => { foreach (var row in Rows) row.SetIconSize(look.IconSize); };
         Look = look;
         Mounts = mounts ?? new MountsViewModel();
@@ -148,8 +149,7 @@ public sealed class MainViewModel : Observable
     public ICommand StopSearchCommand { get; }
     public ICommand EndSearchCommand { get; }
 
-    /// <summary>The Size column for this listing's folders; see the class for why it is off.</summary>
-    public FolderSizesViewModel FolderSizes { get; } = new();
+    public FolderSizesViewModel FolderSizes { get; }
 
     public IReadOnlyList<EntryViewModel> Rows { get => _rows; private set => Set(ref _rows, value); }
     public IReadOnlyList<Crumb> Crumbs { get => _crumbs; private set => Set(ref _crumbs, value); }
@@ -667,7 +667,7 @@ public sealed class MainViewModel : Observable
 
         Selection = [];
         Rows = rows;
-        FolderSizes.Show(rows);
+        FolderSizes.Show(CurrentPath, rows);
 
         // Replacing the rows drops the list's selection; put back whatever survived, so a sort,
         // a refresh or a finished operation does not make the user pick the same items again.

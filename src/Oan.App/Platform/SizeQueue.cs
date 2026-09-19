@@ -42,6 +42,9 @@ internal sealed class SizeQueue : IDisposable
     /// <summary>An answer already known, or null. Lets a row paint without starting a walk.</summary>
     public FolderSizeResult? Cached(string path) => _sizes.Cached(path);
 
+    /// <summary>Throws away what is known about a folder, so the next ask walks it again.</summary>
+    public void Forget(string path) => _sizes.Invalidate(path);
+
     public void Add(string path)
     {
         try { _queue.Add(path); }

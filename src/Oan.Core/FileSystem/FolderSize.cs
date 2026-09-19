@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO.Enumeration;
 
 namespace Oan.Core.FileSystem;
@@ -20,6 +21,10 @@ public sealed record FolderSizeResult
     public int NotFollowed { get; init; }
 
     public DateTime MeasuredAt { get; init; } = DateTime.UtcNow;
+
+    /// <summary>How long the walk took. What it cost last time is the only honest basis for
+    /// deciding how often it may be repeated when the folder changes under us.</summary>
+    public TimeSpan Took { get; init; }
 
     public bool IsFloor => Bytes is not null && (Skipped > 0 || NotFollowed > 0);
 
@@ -95,6 +100,7 @@ public sealed class FolderSize
         var key = Key(path);
         if (Cached(key) is { } hit) return hit;
 
+        var started = Stopwatch.GetTimestamp();
         var walk = new Walk(key, ct);
         walk.Run(Threads);
         if (walk.RootRefused) return FolderSizeResult.Unknown(path);
@@ -105,10 +111,20 @@ public sealed class FolderSize
             Bytes = walk.Bytes,
             Skipped = walk.Skipped,
             NotFollowed = walk.NotFollowed,
+            Took = Stopwatch.GetElapsedTime(started),
         };
 
         Remember(result);
         return result;
+    }
+
+    /// <summary>Drops what is known about a folder, so the next ask walks it again.</summary>
+    public void Invalidate(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        var key = Key(path);
+        lock (_cache) _cache.Remove(key);
     }
 
     private void Remember(FolderSizeResult result)

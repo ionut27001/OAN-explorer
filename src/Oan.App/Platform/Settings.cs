@@ -29,6 +29,10 @@ public sealed class Settings
 
     public Backdrop Backdrop { get; set; } = Backdrop.MicaAlt;
 
+    /// <summary>Measure folder sizes in the listing. On, because a size column that is blank
+    /// until you find a switch is a size column nobody knows exists.</summary>
+    public bool FolderSizes { get; set; } = true;
+
     public static string DefaultPath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OAN", "settings.json");
 

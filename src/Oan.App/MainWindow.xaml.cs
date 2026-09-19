@@ -215,6 +215,11 @@ public partial class MainWindow : Window
 
     private void OnListMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // The column headers are inside the list, so a press on one tunnels through here first.
+        // Starting a rubber band there captured the mouse and marked the event handled, so the
+        // header never raised its own click and sorting by clicking a column did nothing at all.
+        if (Ancestor.Of<GridViewColumnHeader>(e.OriginalSource) is not null) return;
+
         _pressed = e.GetPosition(this);
         _mayDrag = RowAt(e.OriginalSource) is not null;
 
@@ -354,12 +359,6 @@ public partial class MainWindow : Window
         return (e.AllowedEffects & DragDropEffects.Copy) != 0 ? DragDropEffects.Copy : DragDropEffects.None;
     }
 
-    private static EntryViewModel? RowAt(object? source)
-    {
-        var node = source as DependencyObject;
-        while (node is not null and not ListViewItem)
-            node = node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node);
-
-        return (node as ListViewItem)?.Content as EntryViewModel;
-    }
+    private static EntryViewModel? RowAt(object? source) =>
+        Ancestor.Of<ListViewItem>(source)?.Content as EntryViewModel;
 }
