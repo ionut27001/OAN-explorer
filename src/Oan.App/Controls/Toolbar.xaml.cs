@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 
+using Oan.App.ViewModels;
+
 namespace Oan.App.Controls;
 
 /// <summary>
@@ -13,6 +15,10 @@ public partial class Toolbar : UserControl
 
     private void OnMenuButtonClick(object sender, RoutedEventArgs e) => MenuButton.Open(sender);
 
-    private void OnSettingsClick(object sender, RoutedEventArgs e) =>
-        new SettingsWindow(DataContext, Window.GetWindow(this) ?? Application.Current.MainWindow).ShowDialog();
+    private void OnSettingsClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel model) return;
+
+        new SettingsWindow(model, Window.GetWindow(this) ?? Application.Current.MainWindow).ShowDialog();
+    }
 }

@@ -116,7 +116,8 @@
                   <Grid Width="16" Height="16">
                     <TextBlock x:Name="Fallback" Style="{StaticResource Glyph}" Text="&#xE8B7;"
                                Foreground="{DynamicResource Accent}" Visibility="Collapsed" />
-                    <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <Image x:Name="Shell" Source="{Binding Icon}"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
                   </Grid>
                   <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
@@ -125,6 +126,12 @@
                 <!-- Until the shell answers, and for anything it has no icon for. -->
                 <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
                   <Setter TargetName="Fallback" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Value="True"
+                             Binding="{Binding DataContext.Look.PlainIcons,
+                                       RelativeSource={RelativeSource AncestorType=UserControl}}">
+                  <Setter TargetName="Fallback" Property="Visibility" Value="Visible" />
+                  <Setter TargetName="Shell" Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
               </DataTemplate.Triggers>
             </DataTemplate>
@@ -157,7 +164,8 @@
                         <Grid Width="16" Height="16">
                           <TextBlock x:Name="DriveGlyph" Style="{StaticResource Glyph}" Text="&#xEDA2;"
                                      Foreground="{DynamicResource FgMuted}" Visibility="Collapsed" />
-                          <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality" />
+                          <Image x:Name="DriveShell" Source="{Binding Icon}"
+                                 RenderOptions.BitmapScalingMode="HighQuality" />
                         </Grid>
                         <TextBlock Text="{Binding Name}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
                       </StackPanel>
@@ -174,6 +182,12 @@
                 <!-- Until the shell answers, and for a drive it has no icon for. -->
                 <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
                   <Setter TargetName="DriveGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Value="True"
+                             Binding="{Binding DataContext.Look.PlainIcons,
+                                       RelativeSource={RelativeSource AncestorType=UserControl}}">
+                  <Setter TargetName="DriveGlyph" Property="Visibility" Value="Visible" />
+                  <Setter TargetName="DriveShell" Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsOptical}" Value="True">
                   <Setter TargetName="Bar" Property="Visibility" Value="Collapsed" />

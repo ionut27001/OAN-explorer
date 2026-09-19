@@ -65,7 +65,8 @@
                   <Grid x:Name="Icon" Width="16" Height="16">
                     <TextBlock x:Name="Fallback" Style="{StaticResource Glyph}" Text="&#xE8B7;"
                                FontSize="13" Foreground="{DynamicResource Accent}" Visibility="Collapsed" />
-                    <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <Image x:Name="Shell" Source="{Binding Icon}"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
                   </Grid>
                   <TextBlock x:Name="Title" Grid.Column="1" Text="{Binding Title}" Margin="8,0,6,0"
                              VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -89,6 +90,12 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
                   <Setter TargetName="Fallback" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Value="True"
+                             Binding="{Binding DataContext.Look.PlainIcons,
+                                       RelativeSource={RelativeSource AncestorType=UserControl}}">
+                  <Setter TargetName="Fallback" Property="Visibility" Value="Visible" />
+                  <Setter TargetName="Shell" Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
 
                 <DataTrigger Value="IconOnly"

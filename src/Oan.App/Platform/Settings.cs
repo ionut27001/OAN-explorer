@@ -12,6 +12,15 @@ namespace Oan.App.Platform;
 public enum Backdrop { Mica, MicaAlt, Acrylic, Solid }
 
 /// <summary>
+/// Where the sidebar and the tabs get their icons. Windows is the shell's own, which knows what
+/// a folder actually is — Downloads, a drive, one you gave your own icon. Simple is one glyph
+/// per kind, flat and in the accent colour, which some people prefer precisely because it does
+/// not vary. The file list is not affected either way: a row is a specific file, and a glyph
+/// standing in for it would be telling you less than nothing.
+/// </summary>
+public enum IconStyle { Windows, Simple }
+
+/// <summary>
 /// What the window remembers between runs. A file that is missing, unreadable or nonsense gives
 /// the defaults: a settings file must never be what stops the app from opening.
 /// </summary>
@@ -36,6 +45,8 @@ public sealed class Settings
     /// <summary>Show the folder as areas instead of as a list. Off: the list is what a file
     /// manager is for, and the map is for the question "where did the space go".</summary>
     public bool Treemap { get; set; }
+
+    public IconStyle Icons { get; set; } = IconStyle.Windows;
 
     public static string DefaultPath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OAN", "settings.json");
@@ -80,6 +91,7 @@ public sealed class Settings
     {
         if (!Sizes.Contains(IconSize)) IconSize = 16;
         if (!Enum.IsDefined(Backdrop)) Backdrop = Backdrop.MicaAlt;
+        if (!Enum.IsDefined(Icons)) Icons = IconStyle.Windows;
         return this;
     }
 }

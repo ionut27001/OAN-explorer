@@ -313,7 +313,6 @@
           <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="Transparent"
                         Visibility="{Binding Look.Treemap, Converter={StaticResource Show}}" />
           <ctl:TreemapView x:Name="Map" Grid.Row="2" Rows="{Binding Rows}"
-                           MouseRightButtonDown="OnMapRightButtonDown"
                            Visibility="{Binding Look.Treemap, Converter={StaticResource Show}}" />
 
           <ListView x:Name="List" ItemsSource="{Binding Rows}" Style="{StaticResource FileList}"

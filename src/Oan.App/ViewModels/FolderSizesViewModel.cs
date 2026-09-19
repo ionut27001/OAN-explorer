@@ -51,7 +51,7 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
         _queue = new SizeQueue(Measured, path => _rows.ContainsKey(path), capacity: 512);
         _changes = new FolderChanges(Changed);
         _retry = new Timer(_ => Changed([.. _stale.Keys]), null, Timeout.Infinite, Timeout.Infinite);
-        _settle = new Timer(_ => Settled?.Invoke(), null, Timeout.Infinite, Timeout.Infinite);
+        _settle = new Timer(_ => OnDispatcher(() => Settled?.Invoke()), null, Timeout.Infinite, Timeout.Infinite);
     }
 
     /// <summary>
@@ -158,11 +158,18 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
     }
 
     /// <summary>Arrives on a timer thread; null means the watcher lost events and gave up saying which.</summary>
-    private void Changed(IReadOnlyCollection<string>? children)
+    private void Changed(IReadOnlyCollection<string>? children) => OnDispatcher(() => Refresh(children));
+
+    /// <summary>
+    /// Both timers fire on a pool thread, and what they wake up reorders rows and redraws the
+    /// window. Sending it across here rather than at each subscriber means a subscriber cannot
+    /// forget — one of them called InvalidateVisual, which throws off the wrong thread.
+    /// </summary>
+    private static void OnDispatcher(Action work)
     {
         var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null) Refresh(children);
-        else dispatcher.BeginInvoke(DispatcherPriority.Background, () => Refresh(children));
+        if (dispatcher is null) work();
+        else dispatcher.BeginInvoke(DispatcherPriority.Background, work);
     }
 
     private void Refresh(IReadOnlyCollection<string>? children)

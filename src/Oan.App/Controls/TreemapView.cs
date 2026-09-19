@@ -63,6 +63,15 @@ public sealed class TreemapView : FrameworkElement
     /// <summary>Raised when the pointer moves onto a different rectangle, or off all of them.</summary>
     public event Action<EntryViewModel?>? Hovered;
 
+    /// <summary>Raised on a right click, with the rectangle it landed on, before the menu opens.</summary>
+    public event Action<EntryViewModel>? Picked;
+
+    /// <summary>
+    /// The menu a right click opens. The list's own, handed over rather than built again, so a
+    /// rectangle can never offer something its row does not or the other way round.
+    /// </summary>
+    public System.Windows.Controls.ContextMenu? Menu { get; set; }
+
     public IEnumerable<EntryViewModel>? Rows
     {
         get => (IEnumerable<EntryViewModel>?)GetValue(RowsProperty);
@@ -134,6 +143,19 @@ public sealed class TreemapView : FrameworkElement
         ToolTip = null;
         Hovered?.Invoke(null);
         InvalidateVisual();
+    }
+
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        if (At(e.GetPosition(this)) is not { } row) return;
+
+        Picked?.Invoke(row);
+        if (Menu is null) return;
+
+        Menu.PlacementTarget = this;
+        Menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+        Menu.IsOpen = true;
+        e.Handled = true;
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)

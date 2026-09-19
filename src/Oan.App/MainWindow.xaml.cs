@@ -40,6 +40,13 @@ public partial class MainWindow : Window
 
         ApplyViewMode();
         Map.Opened += _vm.Open;
+
+        // The map draws sizes, and sizes land seconds after the rows do. Without this it is
+        // drawn once on arrival, while nothing has been measured, and never again.
+        _vm.FolderSizes.Settled += Map.InvalidateVisual;
+
+        Map.Menu = List.ContextMenu;
+        Map.Picked += row => { List.SelectedItems.Clear(); List.SelectedItems.Add(row); };
         _vm.Look.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(AppearanceViewModel.Treemap)) ApplyMapHeight();
@@ -67,26 +74,6 @@ public partial class MainWindow : Window
     private void ApplyMapHeight() =>
         MapRow.Height = _vm.Look.Treemap ? new GridLength(Math.Max(160, Body.ActualHeight / 3)) : new GridLength(0);
 
-    /// <summary>
-    /// A rectangle answers a right click the way its row does: it becomes the selection, and the
-    /// list's own menu opens on it. One menu, so nothing can be offered in one place and missing
-    /// in the other.
-    /// </summary>
-    private void OnMapRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (Map.RowAt(e.GetPosition(Map)) is not { } row) return;
-
-        _vm.Selection = [row];
-        List.SelectedItems.Clear();
-        List.SelectedItems.Add(row);
-
-        if (List.ContextMenu is not { } menu) return;
-
-        menu.PlacementTarget = Map;
-        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
-        menu.IsOpen = true;
-        e.Handled = true;
-    }
 
     protected override void OnSourceInitialized(EventArgs e)
     {

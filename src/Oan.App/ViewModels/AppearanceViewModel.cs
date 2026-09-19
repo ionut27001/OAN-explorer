@@ -47,6 +47,24 @@ public sealed class AppearanceViewModel(Settings settings, Action remember) : Ob
 
     public bool IsDetails => IconSize == 16;
 
+    /// <summary>Which icons the sidebar and the tabs use. Remembered.</summary>
+    public IconStyle Icons
+    {
+        get => settings.Icons;
+        set
+        {
+            if (settings.Icons == value) return;
+
+            settings.Icons = value;
+            OnChanged();
+            OnChanged(nameof(PlainIcons));
+            remember();
+        }
+    }
+
+    /// <summary>For the markup, which needs a boolean to hide one of two things.</summary>
+    public bool PlainIcons => settings.Icons == IconStyle.Simple;
+
     /// <summary>
     /// The folder drawn as areas rather than listed. Remembered, because someone hunting disk
     /// space is doing it across several folders and having to switch back each time is the
