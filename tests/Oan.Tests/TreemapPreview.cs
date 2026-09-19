@@ -28,7 +28,12 @@ public sealed class TreemapPreview(ITestOutputHelper output)
 
         var bytes = Sta(() =>
         {
-            var map = new TreemapView { Width = 900, Height = 380, Rows = Rows() };
+            var root = Environment.GetEnvironmentVariable("OAN_PREVIEW_ROOT");
+            var map = new TreemapView { Width = 900, Height = 380 };
+
+            if (root is not null) map.Tree = Oan.Core.Sizes.SizeTree.Read(root);
+            else map.Rows = Rows();
+
             map.Measure(new Size(900, 380));
             map.Arrange(new Rect(0, 0, 900, 380));
             map.UpdateLayout();

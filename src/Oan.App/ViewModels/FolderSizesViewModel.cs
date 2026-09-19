@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Oan.App.Platform;
 using Oan.Core.FileSystem;
+using Oan.Core.Sizes;
 
 namespace Oan.App.ViewModels;
 
@@ -40,6 +41,8 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
     private readonly Settings _settings;
     private readonly Action _remember;
     private string _folder = "";
+    private CancellationTokenSource? _deep;
+    private SizeTree? _tree;
 
     public FolderSizesViewModel(Settings settings, Action remember)
     {
@@ -59,6 +62,13 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
     /// so whoever put them in order has to be told it can do it again.
     /// </summary>
     public event Action? Settled;
+
+    /// <summary>
+    /// Everything under the folder on screen, or null while it is being read and whenever the map
+    /// is off. The walk is the expensive one — measured, 479ms for D:\dev and about 7s for the
+    /// whole profile — so it runs off the UI thread and is abandoned the moment you navigate.
+    /// </summary>
+    public SizeTree? Tree { get => _tree; private set => Set(ref _tree, value); }
 
     /// <summary>Whether this listing's folders are measured at all. Remembered between runs.</summary>
     public bool On
@@ -99,10 +109,47 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
 
         _changes.Watch(On && _rows.Count > 0 ? folder : null);
         if (On) MeasureAll();
+
+        Deepen();
+    }
+
+    /// <summary>
+    /// Reads the whole tree for the folder on screen, if anything is going to draw it. Called
+    /// again when the map is switched on, because until then there was no reason to have paid
+    /// for it.
+    /// </summary>
+    public void Deepen()
+    {
+        _deep?.Cancel();
+        _deep?.Dispose();
+        _deep = null;
+        Tree = null;
+
+        if (!On || !_settings.Treemap || _folder.Length == 0) return;
+
+        var stop = new CancellationTokenSource();
+        _deep = stop;
+        var wanted = _folder;
+
+        Task.Run(() =>
+        {
+            SizeTree? tree;
+            try { tree = SizeTree.Read(wanted, stop.Token); }
+            catch (OperationCanceledException) { return; }
+
+            OnDispatcher(() =>
+            {
+                // Still the folder that asked: navigating away while a walk is running is the
+                // normal case, and its answer belongs to a folder nobody is looking at.
+                if (!stop.IsCancellationRequested && _folder == wanted) Tree = tree;
+            });
+        }, CancellationToken.None);
     }
 
     public void Dispose()
     {
+        _deep?.Cancel();
+        _deep?.Dispose();
         _settle.Dispose();
         _retry.Dispose();
         _changes.Dispose();

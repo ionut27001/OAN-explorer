@@ -49,7 +49,10 @@ public partial class MainWindow : Window
         Map.Picked += row => { List.SelectedItems.Clear(); List.SelectedItems.Add(row); };
         _vm.Look.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(AppearanceViewModel.Treemap)) ApplyMapHeight();
+            if (e.PropertyName != nameof(AppearanceViewModel.Treemap)) return;
+
+            ApplyMapHeight();
+            _vm.FolderSizes.Deepen();
         };
         ApplyMapHeight();
 

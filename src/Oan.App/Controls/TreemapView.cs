@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using Oan.App.ViewModels;
+using Oan.Core.Model;
 using Oan.Core.Sizes;
 
 namespace Oan.App.Controls;
@@ -51,11 +52,22 @@ public sealed class TreemapView : FrameworkElement
     /// </summary>
     private static readonly Pen Edge = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(0x38, 0, 0, 0)), 1));
 
+    /// <summary>
+    /// The whole tree under the folder, when it has been read. With it the map draws what is
+    /// inside the folders; without it, only the folders themselves, from the sizes the Size
+    /// column measured. The second is instant, the first takes a walk, so the map shows the
+    /// shallow picture while the deep one is on its way rather than showing nothing.
+    /// </summary>
+    public static readonly DependencyProperty TreeProperty = DependencyProperty.Register(
+        nameof(Tree), typeof(SizeTree), typeof(TreemapView),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
     public static readonly DependencyProperty RowsProperty = DependencyProperty.Register(
         nameof(Rows), typeof(IEnumerable<EntryViewModel>), typeof(TreemapView),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, OnRowsChanged));
 
     private readonly List<(EntryViewModel Row, Box Box)> _placed = [];
+    private readonly List<(SizeTree Tree, int Index, Box Box)> _deep = [];
     private EntryViewModel? _under;
 
     public TreemapView()
@@ -79,6 +91,12 @@ public sealed class TreemapView : FrameworkElement
     /// </summary>
     public System.Windows.Controls.ContextMenu? Menu { get; set; }
 
+    public SizeTree? Tree
+    {
+        get => (SizeTree?)GetValue(TreeProperty);
+        set => SetValue(TreeProperty, value);
+    }
+
     public IEnumerable<EntryViewModel>? Rows
     {
         get => (IEnumerable<EntryViewModel>?)GetValue(RowsProperty);
@@ -91,10 +109,18 @@ public sealed class TreemapView : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         _placed.Clear();
+        _deep.Clear();
 
         var area = new Box(0, 0, ActualWidth, ActualHeight);
         dc.DrawRectangle(Brush("Surface"), null, new Rect(0, 0, ActualWidth, ActualHeight));
         if (area.W <= 0 || area.H <= 0) return;
+
+        if (Tree is { Count: > 0 } tree)
+        {
+            Deep(dc, tree, -1, area, hue: -1, depth: 0);
+            Outline(dc);
+            return;
+        }
 
         // Descending, which the layout requires, and only what has a size: a folder nobody has
         // measured has no area, and inventing one would be drawing a number we do not have.
@@ -130,6 +156,56 @@ public sealed class TreemapView : FrameworkElement
 
         Outline(dc);
     }
+
+    /// <summary>
+    /// One folder's children, laid out inside the rectangle the folder was given, then the same
+    /// again inside each of theirs. The hue is decided at the top level and handed down, so
+    /// everything inside a folder shares its colour — that is what makes the picture read as
+    /// groups rather than as confetti.
+    /// </summary>
+    private void Deep(DrawingContext dc, SizeTree tree, int folder, Box area, int hue, int depth)
+    {
+        if (area.W < Least || area.H < Least || depth > 6) return;
+
+        var kids = tree.ChildrenOf(folder);
+        if (kids.Length == 0) return;
+
+        var order = kids.ToArray();
+        Array.Sort(order, (a, b) => tree.Size[b].CompareTo(tree.Size[a]));
+
+        var sizes = new long[order.Length];
+        for (var i = 0; i < order.Length; i++) sizes[i] = tree.Size[order[i]];
+
+        var boxes = new Box[order.Length];
+        Treemap.Lay(sizes, area, boxes);
+
+        for (var i = 0; i < order.Length; i++)
+        {
+            var box = boxes[i];
+            if (box.W < Least || box.H < Least) continue;
+
+            var index = order[i];
+            var mine = hue < 0 ? i % Fills.Length : hue;
+
+            if (tree.IsFolder(index) && box.W > 10 && box.H > 10 && depth < 6)
+            {
+                // The folder itself is the darker surround its children sit on, which is the
+                // only thing saying where one folder ends and the next begins.
+                dc.DrawRectangle(Group[mine], null, Inset(box));
+                Deep(dc, tree, index, Shrink(box), mine, depth + 1);
+                continue;
+            }
+
+            var rect = Inset(box);
+            _deep.Add((tree, index, box));
+            dc.DrawRectangle(Fills[mine], null, rect);
+            Shade(dc, rect);
+            Label(dc, tree.Name(index), Format.Size(tree.Size[index]), rect);
+        }
+    }
+
+    private static Box Shrink(Box box) =>
+        new(box.X + 2, box.Y + 2, Math.Max(0, box.W - 4), Math.Max(0, box.H - 4));
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
@@ -238,13 +314,16 @@ public sealed class TreemapView : FrameworkElement
     /// than in the theme's foreground: the fills are light in either theme, and a light-on-light
     /// label is the same unreadable picture in a different way.
     /// </summary>
-    private void Label(DrawingContext dc, EntryViewModel row, Rect rect)
+    private void Label(DrawingContext dc, EntryViewModel row, Rect rect) =>
+        Label(dc, row.Name, row.SizeText, rect);
+
+    private void Label(DrawingContext dc, string what, string much, Rect rect)
     {
         if (rect.Width < LabelWide || rect.Height < LabelTall) return;
 
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        var name = Text(row.Name, 12, dpi, rect.Width - 8);
-        var size = Text(row.SizeText, 11, dpi, rect.Width - 8);
+        var name = Text(what, 12, dpi, rect.Width - 8);
+        var size = Text(much, 11, dpi, rect.Width - 8);
 
         dc.PushClip(new RectangleGeometry(rect));
         dc.DrawText(name, new Point(rect.X + 4, rect.Y + 3));
@@ -269,6 +348,16 @@ public sealed class TreemapView : FrameworkElement
     /// same frozen brush stretches to any rectangle it is given — ten brushes for the whole map,
     /// built once, rather than an allocation per block on every redraw.
     /// </summary>
+    /// <summary>The surround a folder's children are drawn on: its own hue, much darker.</summary>
+    private static readonly Brush[] Group = BuildGroups();
+
+    private static Brush[] BuildGroups()
+    {
+        var brushes = new Brush[Hues.Length];
+        for (var i = 0; i < Hues.Length; i++) brushes[i] = Frozen(new SolidColorBrush(Mix(Hues[i], Colors.Black, 0.62)));
+        return brushes;
+    }
+
     private static Brush[] Build()
     {
         var brushes = new Brush[Hues.Length];
