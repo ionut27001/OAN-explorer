@@ -44,6 +44,13 @@ public sealed class TreemapView : FrameworkElement
 
     private static readonly Brush[] Fills = Build();
 
+    /// <summary>
+    /// A darker line along the bottom and right of each rectangle. With the cushion above it,
+    /// that is what a raised surface looks like, and it means the edges read without a border
+    /// drawn around every block — borders at this density eat the small rectangles alive.
+    /// </summary>
+    private static readonly Pen Edge = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(0x38, 0, 0, 0)), 1));
+
     public static readonly DependencyProperty RowsProperty = DependencyProperty.Register(
         nameof(Rows), typeof(IEnumerable<EntryViewModel>), typeof(TreemapView),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, OnRowsChanged));
@@ -117,6 +124,7 @@ public sealed class TreemapView : FrameworkElement
 
             var rect = Inset(box);
             dc.DrawRectangle(Fills[i % Fills.Length], null, rect);
+            Shade(dc, rect);
             Label(dc, known[i], rect);
         }
 
@@ -214,6 +222,17 @@ public sealed class TreemapView : FrameworkElement
     private static Rect Inset(Box box) =>
         new(box.X + Gap, box.Y + Gap, Math.Max(0, box.W - Gap * 2), Math.Max(0, box.H - Gap * 2));
 
+    /// <summary>Two strokes, bottom and right, which is the cheap half of a lit cushion.</summary>
+    private static void Shade(DrawingContext dc, Rect rect)
+    {
+        if (rect.Width < 4 || rect.Height < 4) return;
+
+        var bottom = rect.Bottom - 0.5;
+        var right = rect.Right - 0.5;
+        dc.DrawLine(Edge, new Point(rect.X, bottom), new Point(right, bottom));
+        dc.DrawLine(Edge, new Point(right, rect.Y), new Point(right, bottom));
+    }
+
     /// <summary>
     /// The name, and the size under it when there is room for both. Drawn dark on the fill rather
     /// than in the theme's foreground: the fills are light in either theme, and a light-on-light
@@ -245,16 +264,35 @@ public sealed class TreemapView : FrameworkElement
         return label;
     }
 
+    /// <summary>
+    /// One cushion per colour, not per rectangle. The gradient is in relative coordinates, so the
+    /// same frozen brush stretches to any rectangle it is given — ten brushes for the whole map,
+    /// built once, rather than an allocation per block on every redraw.
+    /// </summary>
     private static Brush[] Build()
     {
         var brushes = new Brush[Hues.Length];
         for (var i = 0; i < Hues.Length; i++)
         {
-            var brush = new SolidColorBrush(Hues[i]);
-            brush.Freeze();
-            brushes[i] = brush;
+            var cushion = new LinearGradientBrush(
+                Mix(Hues[i], Colors.White, 0.26),
+                Mix(Hues[i], Colors.Black, 0.30),
+                new Point(0.1, 0), new Point(0.9, 1));
+
+            brushes[i] = Frozen(cushion);
         }
         return brushes;
+    }
+
+    private static Color Mix(Color colour, Color towards, double amount) => Color.FromRgb(
+        (byte)(colour.R + (towards.R - colour.R) * amount),
+        (byte)(colour.G + (towards.G - colour.G) * amount),
+        (byte)(colour.B + (towards.B - colour.B) * amount));
+
+    private static T Frozen<T>(T freezable) where T : Freezable
+    {
+        freezable.Freeze();
+        return freezable;
     }
 
     private Brush Brush(string key) =>
