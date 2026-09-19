@@ -86,10 +86,18 @@ public sealed class PlaceViewModel(Place place) : Observable
     public bool NearlyFull =>
         place.TotalBytes is { } total && total > 0 && place.FreeBytes is { } free && free * 10 < total;
 
-    /// <summary>Drives: "85.0 GB free of 465 GB". A drive that is not ready knows neither number.</summary>
+    /// <summary>
+    /// Drives: "85.0 GB free of 465 GB". A drive that is not ready knows neither number.
+    ///
+    /// A nearly full drive says so in words as well as in the red bar. This file already argues,
+    /// about the current-place mark, that a signal needs a second half which survives for someone
+    /// who cannot tell two hues apart; a bar whose only difference is its colour fails that.
+    /// </summary>
     public string CapacityText => place.IsOptical
         ? place.TotalBytes is { } bytes ? $"disc image, {Format.Size(bytes)}" : "disc image"
-        : Capacity(place.FreeBytes, place.TotalBytes);
+        : NearlyFull
+            ? $"{Capacity(place.FreeBytes, place.TotalBytes)} — nearly full"
+            : Capacity(place.FreeBytes, place.TotalBytes);
 
     public string SizeText => _cell.Text;
 

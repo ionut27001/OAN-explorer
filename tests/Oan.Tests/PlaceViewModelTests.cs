@@ -45,7 +45,10 @@ public class PlaceViewModelTests
     [Fact]
     public void A_full_drive_still_reads_as_a_measurement()
     {
-        Assert.Equal("0 bytes free of 100 GB", Drive(0, 100 * Gb).CapacityText);
+        // Still the two numbers, not an error — and now the warning as well, since a drive with
+        // nothing left is the strongest case of nearly full there is.
+        Assert.StartsWith("0 bytes free of 100 GB", Drive(0, 100 * Gb).CapacityText);
+        Assert.Contains("nearly full", Drive(0, 100 * Gb).CapacityText);
     }
 
     [Fact]
@@ -171,5 +174,16 @@ public class PlaceViewModelTests
     {
         Assert.False(Drive(null, null).NearlyFull);
         Assert.False(Drive(null, 1000).NearlyFull);
+    }
+
+    /// <summary>
+    /// The red bar is half a signal. Someone who cannot tell the two hues apart has to be able to
+    /// read it, and this file's own sidebar comment says so about the current-place mark.
+    /// </summary>
+    [Fact]
+    public void A_nearly_full_drive_says_so_in_words_and_not_only_in_red()
+    {
+        Assert.Contains("nearly full", Drive(50, 1000).CapacityText);
+        Assert.DoesNotContain("nearly full", Drive(500, 1000).CapacityText);
     }
 }
