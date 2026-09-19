@@ -355,18 +355,18 @@
           <TextBlock Style="{StaticResource Glyph}" Text="&#xE790;" />
           <Button.ContextMenu>
             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-              <MenuItem Header="Mica" IsEnabled="{Binding BackdropSupported}"
+              <MenuItem Header="Mica" IsEnabled="{Binding Look.Supported}"
                         Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Mica}"
-                        IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Mica}" />
-              <MenuItem Header="Mica Alt" IsEnabled="{Binding BackdropSupported}"
+                        IsChecked="{Binding Look.Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Mica}" />
+              <MenuItem Header="Mica Alt" IsEnabled="{Binding Look.Supported}"
                         Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.MicaAlt}"
-                        IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=MicaAlt}" />
-              <MenuItem Header="Acrylic" IsEnabled="{Binding BackdropSupported}"
+                        IsChecked="{Binding Look.Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=MicaAlt}" />
+              <MenuItem Header="Acrylic" IsEnabled="{Binding Look.Supported}"
                         Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Acrylic}"
-                        IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Acrylic}" />
+                        IsChecked="{Binding Look.Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Acrylic}" />
               <MenuItem Header="Solid"
                         Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Solid}"
-                        IsChecked="{Binding Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Solid}" />
+                        IsChecked="{Binding Look.Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Solid}" />
               <MenuItem Header="{Binding Look.Note}" Style="{StaticResource NoteItem}" />
             </ContextMenu>
           </Button.ContextMenu>
@@ -376,7 +376,7 @@
                 Background="{DynamicResource Hover}">
           <StackPanel Orientation="Horizontal">
             <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Details — 16 px icons"
-                         IsChecked="{Binding IconSize, Converter={StaticResource Is}, ConverterParameter=16}">
+                         IsChecked="{Binding Look.IconSize, Converter={StaticResource Is}, ConverterParameter=16}">
               <StackPanel>
                 <Rectangle Width="13" Height="2" Margin="0,0,0,3" Fill="{DynamicResource Fg}" />
                 <Rectangle Width="13" Height="2" Margin="0,0,0,3" Fill="{DynamicResource Fg}" />
@@ -384,15 +384,15 @@
               </StackPanel>
             </RadioButton>
             <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Medium icons — 32 px"
-                         IsChecked="{Binding IconSize, Converter={StaticResource Is}, ConverterParameter=32}">
+                         IsChecked="{Binding Look.IconSize, Converter={StaticResource Is}, ConverterParameter=32}">
               <Rectangle Width="8" Height="8" RadiusX="1" RadiusY="1" Fill="{DynamicResource Fg}" />
             </RadioButton>
             <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Large icons — 48 px"
-                         IsChecked="{Binding IconSize, Converter={StaticResource Is}, ConverterParameter=48}">
+                         IsChecked="{Binding Look.IconSize, Converter={StaticResource Is}, ConverterParameter=48}">
               <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2" Fill="{DynamicResource Fg}" />
             </RadioButton>
             <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Extra large icons — 256 px"
-                         IsChecked="{Binding IconSize, Converter={StaticResource Is}, ConverterParameter=256}">
+                         IsChecked="{Binding Look.IconSize, Converter={StaticResource Is}, ConverterParameter=256}">
               <Rectangle Width="16" Height="16" RadiusX="2" RadiusY="2" Fill="{DynamicResource Fg}" />
             </RadioButton>
           </StackPanel>
@@ -447,13 +447,13 @@
 
       <ctl:Sidebar />
 
-      <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
+      <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource Surface}"
                     DragCompleted="OnSplitterDragged" />
 
-      <!-- The one opaque surface in the window. Text over a wallpaper reads at whatever contrast
-           the wallpaper happens to have, so the backdrop stops at the edge of the list. -->
-      <Border Grid.Column="2" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-              BorderThickness="1,1,0,0" CornerRadius="4,0,0,0" ClipToBounds="True">
+      <!-- The page: the same sheet as the bars and the selected tab. Only the line down its left
+           edge is left, because there is no longer a colour difference to separate the two panes. -->
+      <Border Grid.Column="2" Background="{DynamicResource Surface}" ClipToBounds="True"
+              BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
         <Grid>
           <ListView x:Name="List" ItemsSource="{Binding Rows}" Style="{StaticResource FileList}"
                     SelectionMode="Extended"

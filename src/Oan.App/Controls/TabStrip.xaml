@@ -58,7 +58,7 @@
                 <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
               </DataTrigger>
               <Trigger SourceName="Chip" Property="IsMouseOver" Value="True">
-                <Setter TargetName="Body" Property="Background" Value="{DynamicResource Hover}" />
+                <Setter TargetName="Body" Property="Background" Value="{DynamicResource SurfaceSoft}" />
               </Trigger>
               <!-- Last, so it outranks hover: the tab you are on should not change colour when
                    the pointer crosses it, which reads as it being about to do something. -->

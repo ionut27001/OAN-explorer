@@ -3,6 +3,9 @@
 
   <SolidColorBrush x:Key="WindowBg" Color="#202020" />
   <SolidColorBrush x:Key="Surface" Color="#282828" />
+  <!-- The selected tab at partial strength. Tab hover uses it rather than the generic Hover wash,
+       so a hovered tab can never read as brighter than the selected one, on any backdrop. -->
+  <SolidColorBrush x:Key="SurfaceSoft" Color="#59282828" />
   <SolidColorBrush x:Key="Fg" Color="#F0F0F0" />
   <SolidColorBrush x:Key="FgMuted" Color="#A8A8A8" />
   <SolidColorBrush x:Key="FgDim" Color="#7A7A7A" />
