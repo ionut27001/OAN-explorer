@@ -45,7 +45,7 @@
     </Style>
   </UserControl.Resources>
 
-  <Grid DockPanel.Dock="Top" Height="36">
+  <Grid DockPanel.Dock="Top" Height="36" Background="{DynamicResource Caption}">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />

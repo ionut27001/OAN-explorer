@@ -104,12 +104,7 @@
        came out at 1.31:1. This lays a scrim under the bars that carry text, in that one mode.
        Mica is a tint of the wallpaper alone and does not move, so it is left clear. -->
   <Style x:Key="ChromeBar" TargetType="Border">
-    <Setter Property="Background" Value="Transparent" />
-    <Style.Triggers>
-      <DataTrigger Binding="{Binding Look.ChromeOverAcrylic}" Value="True">
-        <Setter Property="Background" Value="{DynamicResource Scrim}" />
-      </DataTrigger>
-    </Style.Triggers>
+    <Setter Property="Background" Value="{DynamicResource Layer}" />
   </Style>
 
   <Style TargetType="TextBox">

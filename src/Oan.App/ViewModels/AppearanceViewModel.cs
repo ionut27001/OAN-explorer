@@ -63,7 +63,6 @@ public sealed class AppearanceViewModel(Settings settings, Action remember) : Ob
             Supported = Apply?.Invoke(value) ?? false;
 
             OnChanged();
-            OnChanged(nameof(ChromeOverAcrylic));
             remember();
         }
     }
@@ -77,17 +76,8 @@ public sealed class AppearanceViewModel(Settings settings, Action remember) : Ob
             if (!Set(ref _backdropSupported, value)) return;
 
             OnChanged(nameof(Note));
-            OnChanged(nameof(ChromeOverAcrylic));
         }
     }
-
-    /// <summary>
-    /// Acrylic blurs whatever window is behind this one, so the chrome cannot know how bright its
-    /// own background is: measured over a white window, the muted status text came out at 1.31:1.
-    /// In that one mode the bars that carry text are given a scrim. Mica tints from the wallpaper
-    /// alone and measured the same over a white window as over the desktop, so it is left clear.
-    /// </summary>
-    public bool ChromeOverAcrylic => Supported && Backdrop == Backdrop.Acrylic;
 
     public string? Note =>
         Supported ? null : "Not supported on this Windows build — the window stays solid.";

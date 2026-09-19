@@ -15,8 +15,19 @@
   <SolidColorBrush x:Key="SelectedFg" Color="#1B1B1B" />
   <SolidColorBrush x:Key="ScrollThumb" Color="#8A8A8A" />
   <SolidColorBrush x:Key="ScrollThumbHover" Color="#5D5D5D" />
-  <!-- Laid over the chrome when the backdrop is acrylic; see ChromeBar. -->
-  <SolidColorBrush x:Key="Scrim" Color="#CCFFFFFF" />
+  <!-- The caption band, the one strip above the layer. It keeps most of the backdrop, but not all
+       of it: acrylic samples whatever window is behind, and over a white one the tab titles and the
+       window buttons were measured at 1.31:1. It is also what the selected tab stands out from, so
+       it stays a step darker than the layer. -->
+  <SolidColorBrush x:Key="Caption" Color="#66FFFFFF" />
+
+  <!-- The layer: everything below the tabs is painted with it, and so is the selected tab, which
+       is what makes the tab and the page read as one shape rather than a chip parked above a bar.
+       Translucent, so the backdrop still comes through; opaque enough that text over a bright
+       wallpaper stays readable, which the caption band above it does not have to carry. The alpha
+       is the one the acrylic scrim used, measured; the colour is Surface #FFFFFF so the bars, the
+       selected tab and the file list all land on the same tone. -->
+  <SolidColorBrush x:Key="Layer" Color="#CCFFFFFF" />
 
   <SolidColorBrush x:Key="FieldBg" Color="#FFFFFF" />
 

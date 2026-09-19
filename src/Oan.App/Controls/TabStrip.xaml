@@ -7,7 +7,10 @@
     <BooleanToVisibilityConverter x:Key="Show" />
   </UserControl.Resources>
 
-  <Border Padding="2,0,6,0" Style="{StaticResource ChromeBar}">
+  <!-- No ChromeBar here. The caption band is the one place the backdrop is left alone: paint it
+       and the selected tab has nothing to stand out from, and the glass is gone from the one band
+       that is meant to have it. -->
+  <Border Padding="2,0,6,0">
     <!-- A StackPanel, not a DockPanel: docking the button Right threw it to the far edge of the
          caption band, half a window away from the tab it adds one to. -->
     <StackPanel Orientation="Horizontal">
@@ -53,7 +56,7 @@
               <!-- Last, so it outranks hover: the tab you are on should not change colour when
                    the pointer crosses it, which reads as it being about to do something. -->
               <DataTrigger Binding="{Binding IsActive}" Value="True">
-                <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Surface}" />
+                <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Layer}" />
               </DataTrigger>
             </DataTemplate.Triggers>
           </DataTemplate>
