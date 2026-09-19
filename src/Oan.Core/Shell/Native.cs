@@ -53,6 +53,7 @@ internal static class Native
 
     internal static readonly Guid IID_IImageList = new("46eb5926-582e-4017-9fdf-e8998daa0950");
     internal static readonly Guid IID_IContextMenu = new("000214e4-0000-0000-c000-000000000046");
+    internal static readonly Guid IID_IShellFolder = new("000214e6-0000-0000-c000-000000000046");
     internal static readonly Guid BHID_SFUIObject = new("3981e225-f559-11d3-8e3a-00c04f6837d5");
 
     [StructLayout(LayoutKind.Sequential)]
@@ -126,6 +127,26 @@ internal static class Native
     {
         [PreserveSig] int BindToHandler(nint bindCtx, in Guid bhid, in Guid riid, out nint ppv);
     }
+
+    /// <summary>
+    /// Declared only as far as CreateViewObject, which is the sixth slot. The five before it are
+    /// placeholders: a COM interface is a vtable, so every method ahead of the one being called
+    /// has to occupy its position or the call lands on the wrong function.
+    /// </summary>
+    [ComImport, Guid("000214e6-0000-0000-c000-000000000046"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IShellFolder
+    {
+        [PreserveSig] int ParseDisplayName(nint hwnd, nint bc, string name, out uint eaten, out nint pidl, ref uint attrs);
+        [PreserveSig] int EnumObjects(nint hwnd, int flags, out nint enumIdList);
+        [PreserveSig] int BindToObject(nint pidl, nint bc, in Guid riid, out nint ppv);
+        [PreserveSig] int BindToStorage(nint pidl, nint bc, in Guid riid, out nint ppv);
+        [PreserveSig] int CompareIDs(nint lparam, nint pidl1, nint pidl2);
+        [PreserveSig] int CreateViewObject(nint hwndOwner, in Guid riid, out nint ppv);
+    }
+
+    [DllImport("shell32.dll")]
+    internal static extern int SHBindToObject(nint folder, nint pidl, nint bindCtx, in Guid riid, out nint ppv);
 
     [ComImport, Guid("000214e4-0000-0000-c000-000000000046"),
      InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

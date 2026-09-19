@@ -246,8 +246,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnListContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        var paths = _vm.SelectedPaths();
-        if (paths.Count == 0) return;
+        if (_vm.CurrentPath.Length == 0) return;
 
         e.Handled = true;
         var point = PointToScreen(Mouse.GetPosition(this));
@@ -255,8 +254,15 @@ public partial class MainWindow : Window
         try
         {
             var own = _vm.OwnMenuItems();
-            var shell = ShellContextMenu.Show(_vm.OwnerHandle, _vm.SelectedShellItems(),
-                (int)point.X, (int)point.Y, own);
+
+            // Empty space gets the folder's own menu — New, Paste, Properties — from the same
+            // system that draws the one for a selection. Two menus owned by two different
+            // painters look like two different programs, which is what this replaces.
+            var shell = _vm.SelectedPaths().Count == 0
+                ? ShellContextMenu.ShowForFolder(_vm.OwnerHandle, _vm.CurrentPath,
+                    (int)point.X, (int)point.Y, own)
+                : ShellContextMenu.Show(_vm.OwnerHandle, _vm.SelectedShellItems(),
+                    (int)point.X, (int)point.Y, own);
 
             if (shell.OwnCommand != 0) { _vm.RunOwnMenuItem(shell.OwnCommand); return; }
             if (shell.Ran) _vm.RefreshCommand.Execute(null);

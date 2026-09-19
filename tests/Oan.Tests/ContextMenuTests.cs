@@ -181,7 +181,7 @@ public class ContextMenuTests
         using var sta = new StaThread("OAN shell menu .txt");
         (Native.IContextMenu? Menu, nint Popup) built = default;
 
-        Assert.True(sta.Run(() => built = ShellContextMenu.Build([file], Native.CMF_EXPLORE), Generous),
+        Assert.True(sta.Run(() => built = MenuBuilder.Build([file], Native.CMF_EXPLORE), Generous),
             "the shell did not answer in 5s on a machine with nothing wrong with it");
         Assert.NotNull(built.Menu);
         Assert.NotEqual(0, built.Popup);

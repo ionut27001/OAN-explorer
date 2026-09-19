@@ -17,7 +17,7 @@ public readonly record struct ShellMenuResult(bool Ran, string? Refusal, string?
 /// An entry OAN puts at the top of the shell's menu, above everything the system offers.
 ///
 /// Mount belongs here rather than in a menu of our own: the user right-clicks once and expects
-/// one list. Ids are ours and stay below <c>FirstCommand</c>, so what comes back says plainly
+/// one list. Ids are ours and stay below <c>MenuBuilder.FirstCommand</c>, so what comes back says plainly
 /// whether the shell should run it or we should.
 /// </summary>
 public readonly record struct OwnMenuItem(int Id, string Label);
@@ -36,9 +36,6 @@ public readonly record struct ShellItem(string Path, bool IsDirectory);
 /// </summary>
 public static class ShellContextMenu
 {
-    /// <summary>The shell's ids start here; everything below is ours.</summary>
-    private const uint FirstCommand = 100;
-    private const uint LastCommand = 0x7FFF;
 
     /// <summary>
     /// How long an extension gets. Not a performance budget — a menu slower than this is broken,
@@ -82,7 +79,25 @@ public static class ShellContextMenu
         if ((Native.GetKeyState(Native.VK_SHIFT) & 0x8000) != 0) flags |= Native.CMF_EXTENDEDVERBS;
 
         var paths = items.Select(item => item.Path).ToArray();
-        return Show(owner, items, screenX, screenY, () => Build(paths, flags, own), own);
+        return Show(owner, items, screenX, screenY, () => MenuBuilder.Build(paths, flags, own), own);
+    }
+
+    /// <summary>
+    /// The menu Explorer shows on empty space in a folder: New, Paste, Properties, and whatever
+    /// extensions the user has. Same system as the menu for a selection, on purpose — two menus
+    /// drawn by two different owners look like two different programs, and the app's own is here
+    /// only for when the shell will not answer.
+    /// </summary>
+    public static ShellMenuResult ShowForFolder(nint owner, string folder, int screenX, int screenY,
+        IReadOnlyList<OwnMenuItem>? own = null)
+    {
+        var flags = Native.CMF_EXPLORE;
+        if ((Native.GetKeyState(Native.VK_SHIFT) & 0x8000) != 0) flags |= Native.CMF_EXTENDEDVERBS;
+
+        // Named as a folder rather than by extension: what can hang here is the folder's own view
+        // handler, and blaming ".iso" for it would silence the wrong thing next time.
+        var items = new[] { new ShellItem(folder, IsDirectory: true) };
+        return Show(owner, items, screenX, screenY, () => MenuBuilder.BuildForFolder(owner, folder, flags, own), own);
     }
 
     /// <summary>The same, with the part that loads third-party code handed in, so it can be faked.</summary>
@@ -118,13 +133,13 @@ public static class ShellContextMenu
 
             // One of ours. It never went near a shell extension, so a lost apartment does not
             // apply to it.
-            if (command < FirstCommand) return new(false, null, null, command);
+            if (command < MenuBuilder.FirstCommand) return new(false, null, null, command);
 
             // Something was picked, off a menu that was on screen and working, and the apartment
             // it lived in is gone. Answering that with silence is the click that does nothing.
             if (sta.Lost) return new(false, Refusal(kinds, Why.Lost));
 
-            return Chosen(sta, menu, owner, (uint)command - FirstCommand, screenX, screenY);
+            return Chosen(sta, menu, owner, (uint)command - MenuBuilder.FirstCommand, screenX, screenY);
         }
         finally
         {
@@ -151,76 +166,6 @@ public static class ShellContextMenu
         return answer == Native.HRESULT_CANCELLED
             ? default
             : new(false, null, $"That command did not run — {Explain(answer)}");
-    }
-
-    /// <summary>
-    /// Everything that loads somebody else's code: binding the shell object for the selection, and
-    /// asking it — and every extension registered for these files — to fill a menu. This is the
-    /// call that hangs on this machine, so it only ever runs on the STA thread.
-    /// </summary>
-    internal static (Native.IContextMenu? Menu, nint Popup) Build(IReadOnlyList<string> paths, uint flags, IReadOnlyList<OwnMenuItem>? own = null)
-    {
-        var pidls = new List<nint>(paths.Count);
-        try
-        {
-            // One path the shell cannot parse — a deleted item still in the list, a dropped
-            // share — must not cost the user the menu for everything else selected.
-            foreach (var path in paths)
-                if (Native.SHParseDisplayName(path, 0, out var pidl, 0, out _) == 0 && pidl != 0)
-                    pidls.Add(pidl);
-
-            if (pidls.Count == 0) return default;
-
-            var menu = Bind(pidls.ToArray());
-            if (menu is null) return default;
-
-            var popup = Native.CreatePopupMenu();
-            if (popup != 0 && menu.QueryContextMenu(popup, 0, FirstCommand, LastCommand, flags) >= 0)
-            {
-                // Inserted after the shell has filled the menu, at the top, so ours are the first
-                // thing under the cursor and the shell's numbering is untouched.
-                if (own is { Count: > 0 })
-                {
-                    Native.InsertMenuW(popup, 0, Native.MF_BYPOSITION | Native.MF_SEPARATOR, 0, null);
-                    for (var i = own.Count - 1; i >= 0; i--)
-                        Native.InsertMenuW(popup, 0, Native.MF_BYPOSITION, (nuint)own[i].Id, own[i].Label);
-                }
-
-                return (menu, popup);
-            }
-
-            Release(menu, popup);
-            return default;
-        }
-        finally
-        {
-            foreach (var pidl in pidls) Marshal.FreeCoTaskMem(pidl);
-        }
-    }
-
-    private static Native.IContextMenu? Bind(nint[] pidls)
-    {
-        if (Native.SHCreateShellItemArrayFromIDLists((uint)pidls.Length, pidls, out var items) != 0)
-            return null;
-
-        try
-        {
-            if (items.BindToHandler(0, Native.BHID_SFUIObject, Native.IID_IContextMenu, out var menu) != 0 || menu == 0)
-                return null;
-
-            try
-            {
-                return (Native.IContextMenu)Marshal.GetObjectForIUnknown(menu);
-            }
-            finally
-            {
-                Marshal.Release(menu);
-            }
-        }
-        finally
-        {
-            Marshal.ReleaseComObject(items);
-        }
     }
 
     /// <summary>The menu's own modal loop, here on the UI thread, and what the user picked.</summary>
