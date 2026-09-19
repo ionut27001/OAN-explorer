@@ -75,6 +75,17 @@ public sealed class PlaceViewModel(Place place) : Observable
     public bool IsOurs => _image is not null;
     public double? UsedFraction => place.UsedFraction;
 
+    /// <summary>
+    /// Under a tenth left, which is where Windows itself turns the bar red. A flat fraction
+    /// rather than a fixed number of gigabytes, because that is Explorer's rule and a sidebar
+    /// disagreeing with the window next to it would just look wrong.
+    ///
+    /// Said in whole bytes rather than as a fraction: exactly a tenth left is not yet a warning,
+    /// and deciding that on doubles puts the boundary on whichever way 0.9 happens to round.
+    /// </summary>
+    public bool NearlyFull =>
+        place.TotalBytes is { } total && total > 0 && place.FreeBytes is { } free && free * 10 < total;
+
     /// <summary>Drives: "85.0 GB free of 465 GB". A drive that is not ready knows neither number.</summary>
     public string CapacityText => place.IsOptical
         ? place.TotalBytes is { } bytes ? $"disc image, {Format.Size(bytes)}" : "disc image"

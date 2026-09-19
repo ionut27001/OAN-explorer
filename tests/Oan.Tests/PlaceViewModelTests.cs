@@ -153,4 +153,23 @@ public class PlaceViewModelTests
         encoder.Save(stream);
         return stream.ToArray();
     }
+
+    /// <summary>
+    /// The bar turns red at the same point Explorer's does: under a tenth of the drive left.
+    /// A drive that will not say how big it is has no fraction, and so no warning either.
+    /// </summary>
+    [Theory]
+    [InlineData(100, 1000, false)]
+    [InlineData(101, 1000, false)]
+    [InlineData(99, 1000, true)]
+    [InlineData(0, 1000, true)]
+    public void The_drive_bar_warns_only_under_a_tenth_left(long free, long total, bool expected) =>
+        Assert.Equal(expected, Drive(free, total).NearlyFull);
+
+    [Fact]
+    public void A_drive_that_knows_neither_number_does_not_warn()
+    {
+        Assert.False(Drive(null, null).NearlyFull);
+        Assert.False(Drive(null, 1000).NearlyFull);
+    }
 }

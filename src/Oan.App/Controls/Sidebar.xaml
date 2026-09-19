@@ -62,6 +62,13 @@
               <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
                       Background="{DynamicResource Accent}" CornerRadius="2" />
             </Grid>
+            <ControlTemplate.Triggers>
+              <!-- Inside the template, not on the style: a style trigger cannot reach a part. -->
+              <DataTrigger Binding="{Binding NearlyFull}" Value="True">
+                <Setter TargetName="PART_Indicator" Property="Background"
+                        Value="{DynamicResource Warning}" />
+              </DataTrigger>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
