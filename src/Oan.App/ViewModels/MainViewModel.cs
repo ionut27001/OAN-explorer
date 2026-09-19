@@ -21,10 +21,11 @@ public enum SortKey { Name, Size, Kind, Modified }
 /// </summary>
 public sealed record NewItem(string Label, string? Gesture, ICommand Command, NewFileTemplate? Template);
 
-public sealed class MainViewModel : Observable
+public sealed class MainViewModel : Observable, IFileOpsHost
 {
     private readonly IFileOperations _ops;
     private readonly Settings _settings;
+    private readonly FileOps _files;
     private CancellationTokenSource? _load;
     /// <summary>Hits are appended in batches: one notification per hit would spend the whole
     /// search in layout on a folder that returns thousands.</summary>
@@ -53,6 +54,7 @@ public sealed class MainViewModel : Observable
     {
         _ops = ops;
         _settings = settings;
+        _files = new FileOps(ops, this);
         var look = new AppearanceViewModel(settings, Remember);
         FolderSizes = new FolderSizesViewModel(settings, Remember);
         look.IconSizeChanged = () => { foreach (var row in Rows) row.SetIconSize(look.IconSize); };
@@ -77,14 +79,14 @@ public sealed class MainViewModel : Observable
             if (Sort.Key == SortKey.Size && Sort.Reorder(Rows) is { } bySize) Rows = bySize;
         };
 
-        CopyCommand = new RelayCommand(() => PutOnClipboard(cut: false), () => HasSelection);
-        CutCommand = new RelayCommand(() => PutOnClipboard(cut: true), () => HasSelection && CanWriteHere);
-        PasteCommand = new RelayCommand(() => Run(PasteAsync), () => CanPaste && CanWriteHere);
-        RenameCommand = new RelayCommand(() => Run(RenameAsync), () => _selection.Count == 1 && CanWriteHere);
-        DeleteCommand = new RelayCommand(() => Run(() => DeleteAsync(permanent: false)), () => HasSelection && CanWriteHere);
-        DeletePermanentlyCommand = new RelayCommand(() => Run(() => DeleteAsync(permanent: true)), () => HasSelection && CanWriteHere);
-        NewFolderCommand = new RelayCommand(() => Run(NewFolderAsync), () => CanWriteHere);
-        NewItemCommand = new RelayCommand(p => Run(() => NewAsync((NewItem)p!)), _ => CanWriteHere);
+        CopyCommand = new RelayCommand(() => _files.PutOnClipboard(cut: false), () => HasSelection);
+        CutCommand = new RelayCommand(() => _files.PutOnClipboard(cut: true), () => HasSelection && CanWriteHere);
+        PasteCommand = new RelayCommand(() => Run(_files.PasteAsync), () => CanPaste && CanWriteHere);
+        RenameCommand = new RelayCommand(() => Run(_files.RenameAsync), () => _selection.Count == 1 && CanWriteHere);
+        DeleteCommand = new RelayCommand(() => Run(() => _files.DeleteAsync(permanent: false)), () => HasSelection && CanWriteHere);
+        DeletePermanentlyCommand = new RelayCommand(() => Run(() => _files.DeleteAsync(permanent: true)), () => HasSelection && CanWriteHere);
+        NewFolderCommand = new RelayCommand(() => Run(_files.NewFolderAsync), () => CanWriteHere);
+        NewItemCommand = new RelayCommand(p => Run(() => _files.NewAsync((NewItem)p!)), _ => CanWriteHere);
         OpenSelectionCommand = new RelayCommand(OpenSelection, () => HasSelection);
         BackdropCommand = new RelayCommand(p => Look.Backdrop = (Backdrop)p!);
         KindCommand = new RelayCommand(p => KindFilter = (FileKind)p!);
@@ -388,7 +390,7 @@ public sealed class MainViewModel : Observable
     public IReadOnlyList<ShellItem> SelectedShellItems() =>
         _selection.Select(r => new ShellItem(r.Entry.FullPath, r.Entry.IsDirectory)).ToArray();
 
-    public void Drop(IReadOnlyList<string> paths, bool move) => Run(() => DropAsync(paths, move));
+    public void Drop(IReadOnlyList<string> paths, bool move) => Run(() => _files.DropAsync(paths, move));
 
     /// <summary>
     /// Nothing inside an archive can be written. Asked by every command that would create,
@@ -439,31 +441,6 @@ public sealed class MainViewModel : Observable
         }
     }
 
-    private Task DropAsync(IReadOnlyList<string> paths, bool move)
-    {
-        if (!CanWriteHere)
-        {
-            Notice = "This folder cannot be written to.";
-            return Task.CompletedTask;
-        }
-
-        var incoming = paths
-            .Where(p => !string.Equals(Path.GetDirectoryName(p), CurrentPath, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-
-        // A drag that ends where it began is a cancelled gesture, not a failure. This is the one
-        // no-op the window is allowed to pass over in silence: the user asked for nothing, and an
-        // orange warning for a slipped mouse reads as something having gone wrong.
-        if (incoming.Length == 0) return Task.CompletedTask;
-
-        return RunOperationAsync(new OperationRequest
-        {
-            Kind = move ? OperationKind.Move : OperationKind.Copy,
-            Sources = incoming,
-            Destination = CurrentPath,
-        });
-    }
-
     private string? Notice
     {
         get => _notice;
@@ -497,6 +474,12 @@ public sealed class MainViewModel : Observable
         Notice = null;
         Run(() => LoadAsync(path));
     }
+
+    // Explicit, both of them: the window's own notice line and reload stay private, and the
+    // interface is how the operations reach them without opening either to everybody else.
+    string? IFileOpsHost.Notice { set => Notice = value; }
+
+    Task IFileOpsHost.ReloadAsync() => ReloadAsync();
 
     private async Task ReloadAsync()
     {
@@ -712,122 +695,6 @@ public sealed class MainViewModel : Observable
         OnChanged(nameof(KindFiltered));
         Rebuild();
     }
-
-    private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
-
-    private void PutOnClipboard(bool cut)
-    {
-        var paths = SelectedPaths();
-        if (paths.Count == 0) return;
-
-        Notice = ClipboardFiles.Put(paths, cut) ? null : "The clipboard is in use by another program.";
-        RefreshClipboardState();
-    }
-
-    private Task PasteAsync()
-    {
-        var (paths, cut) = ClipboardFiles.Get();
-        if (paths.Count == 0) return Task.CompletedTask;
-
-        return RunOperationAsync(new OperationRequest
-        {
-            Kind = cut ? OperationKind.Move : OperationKind.Copy,
-            Sources = paths,
-            Destination = CurrentPath,
-        }, clearClipboard: cut);
-    }
-
-    private Task DeleteAsync(bool permanent) =>
-        RunOperationAsync(new OperationRequest
-        {
-            Kind = OperationKind.Delete,
-            Sources = SelectedPaths(),
-            Permanent = permanent,
-        });
-
-    private Task RenameAsync()
-    {
-        var row = _selection[0];
-        var name = AskName?.Invoke("Rename", row.Name);
-        if (string.IsNullOrWhiteSpace(name) || name == row.Name) return Task.CompletedTask;
-
-        return RunOperationAsync(new OperationRequest
-        {
-            Kind = OperationKind.Rename,
-            Sources = [row.Entry.FullPath],
-            NewName = name,
-        });
-    }
-
-    private Task NewFolderAsync()
-    {
-        var name = AskName?.Invoke("New folder", "New folder");
-        if (string.IsNullOrWhiteSpace(name)) return Task.CompletedTask;
-
-        return RunOperationAsync(new OperationRequest
-        {
-            Kind = OperationKind.CreateFolder,
-            Destination = CurrentPath,
-            NewName = name,
-        });
-    }
-
-    private Task NewAsync(NewItem item) =>
-        item.Template is null ? NewFolderAsync() : NewFileAsync(item.Template);
-
-    /// <summary>
-    /// Explorer's flow: the file appears under the name its type advertises and the name is the
-    /// next thing you are asked for, rather than before there is anything to name.
-    /// </summary>
-    private async Task NewFileAsync(NewFileTemplate template)
-    {
-        string path;
-        try
-        {
-            path = ShellNew.Create(CurrentPath, template);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                      or ArgumentException or NotSupportedException)
-        {
-            Notice = ex.Message;
-            return;
-        }
-
-        await ReloadAsync();
-
-        var row = Rows.FirstOrDefault(r => Same(r.Entry.FullPath, path));
-        if (row is null)
-        {
-            Notice = $"\"{Path.GetFileName(path)}\" was created — the filter is hiding it.";
-            return;
-        }
-
-        Reselect?.Invoke([row]);
-        if (_selection.Count == 1) await RenameAsync();
-    }
-
-    private async Task RunOperationAsync(OperationRequest request, bool clearClipboard = false)
-    {
-        var result = await _ops.RunAsync(request, OwnerHandle);
-
-        var notice =
-            result.Error is not null ? result.Error :
-            result.Failed.Count > 0 ? $"{result.Failed.Count} item(s) failed: {result.Failed[0].Message}" :
-            result.Cancelled ? Cancellation(result.Succeeded) : null;
-
-        if (clearClipboard && result.Ok)
-        {
-            ClipboardFiles.Clear();
-            RefreshClipboardState();
-        }
-
-        // Message last, so the outcome of the operation is what the user is left looking at.
-        await ReloadAsync();
-        Notice = notice;
-    }
-
-    private static string Cancellation(int succeeded) =>
-        succeeded > 0 ? $"Cancelled after {succeeded} item(s)." : "Cancelled.";
 
     private void OpenSelection()
     {
