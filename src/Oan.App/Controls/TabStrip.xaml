@@ -10,7 +10,7 @@
   <!-- No ChromeBar here. The caption band is the one place the backdrop is left alone: paint it
        and the selected tab has nothing to stand out from, and the glass is gone from the one band
        that is meant to have it. -->
-  <Border Padding="2,0,6,0">
+  <Border Padding="8,0,6,0">
     <!-- A StackPanel, not a DockPanel: docking the button Right threw it to the far edge of the
          caption band, half a window away from the tab it adds one to. -->
     <StackPanel Orientation="Horizontal">
@@ -20,22 +20,28 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <!-- Not a rounded box. The top corners curve in, the bottom two curve OUT, into the
-                 bar below - that is what makes the tab look like it rose out of the page rather
-                 than like a chip parked on it. A Border cannot flare outwards, so the bottom two
-                 corners are quarter discs drawn beside the body, in the same brush as the bar. -->
+            <!-- Not a rounded box. The top corners curve in; the bottom two curve OUT, away from
+                 the tab and down into the bar, tangent to it - that is what makes the tab look
+                 like it rose out of the page. A Border only curves inwards, so those two corners
+                 are drawn as paths, and they hang OUTSIDE the chip so the tabs can sit side by
+                 side rather than being held apart by their own flares. -->
             <Grid x:Name="Chip" MinWidth="160" Height="30" Margin="0,0,2,0" Background="Transparent"
                   shell:WindowChrome.IsHitTestVisibleInChrome="True"
                   MouseDown="OnTabMouseDown" MouseMove="OnTabMouseMove"
                   AllowDrop="True" Drop="OnTabDrop" ToolTip="{Binding Path}">
-              <Border x:Name="Body" Margin="8,0" CornerRadius="8,8,0,0" Background="Transparent" />
-              <Path x:Name="WingLeft" Width="8" Height="8" Visibility="Collapsed"
-                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                    Fill="{DynamicResource Surface}" Data="M 0,8 A 8,8 0 0 1 8,0 L 8,8 Z" />
-              <Path x:Name="WingRight" Width="8" Height="8" Visibility="Collapsed"
-                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    Fill="{DynamicResource Surface}" Data="M 0,0 A 8,8 0 0 1 8,8 L 0,8 Z" />
-              <DockPanel LastChildFill="True" Margin="18,0,14,0">
+              <Border x:Name="Hot" CornerRadius="8,8,0,0" Background="Transparent" />
+              <!-- Fill and flares fade as one shape, so switching tabs grows the new one out of
+                   the bar instead of snapping it there. -->
+              <Grid x:Name="Chosen" Opacity="0">
+                <Border CornerRadius="8,8,0,0" Background="{DynamicResource Surface}" />
+                <Path Width="8" Height="8" Margin="-8,0,0,0" Fill="{DynamicResource Surface}"
+                      HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                      Data="M 8,0 A 8,8 0 0 1 0,8 L 8,8 Z" />
+                <Path Width="8" Height="8" Margin="0,0,-8,0" Fill="{DynamicResource Surface}"
+                      HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                      Data="M 0,0 A 8,8 0 0 0 8,8 L 0,8 Z" />
+              </Grid>
+              <DockPanel LastChildFill="True" Margin="10,0">
                 <Button x:Name="CloseChip" DockPanel.Dock="Right" Width="22" Height="22" Padding="0"
                         Style="{StaticResource FlatButton}" VerticalAlignment="Center"
                         ToolTip="Close tab (Ctrl+W)" CommandParameter="{Binding}"
@@ -58,14 +64,27 @@
                 <Setter TargetName="CloseChip" Property="Visibility" Value="Collapsed" />
               </DataTrigger>
               <Trigger SourceName="Chip" Property="IsMouseOver" Value="True">
-                <Setter TargetName="Body" Property="Background" Value="{DynamicResource SurfaceSoft}" />
+                <Setter TargetName="Hot" Property="Background" Value="{DynamicResource SurfaceSoft}" />
               </Trigger>
               <!-- Last, so it outranks hover: the tab you are on should not change colour when
                    the pointer crosses it, which reads as it being about to do something. -->
               <DataTrigger Binding="{Binding IsActive}" Value="True">
-                <Setter TargetName="Body" Property="Background" Value="{DynamicResource Surface}" />
-                <Setter TargetName="WingLeft" Property="Visibility" Value="Visible" />
-                <Setter TargetName="WingRight" Property="Visibility" Value="Visible" />
+                <DataTrigger.EnterActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="Chosen" Duration="0:0:0.14"
+                                       Storyboard.TargetProperty="Opacity" To="1" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="Chosen" Duration="0:0:0.14"
+                                       Storyboard.TargetProperty="Opacity" To="0" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </DataTrigger.ExitActions>
               </DataTrigger>
             </DataTemplate.Triggers>
           </DataTemplate>
@@ -73,7 +92,7 @@
       </ItemsControl>
 
       <Button Style="{StaticResource FlatButton}" Width="32" Height="30" Padding="0"
-              Margin="4,0,0,0" VerticalAlignment="Bottom" ToolTip="New tab (Ctrl+T)"
+              Margin="10,0,0,0" VerticalAlignment="Bottom" ToolTip="New tab (Ctrl+T)"
               shell:WindowChrome.IsHitTestVisibleInChrome="True"
               Command="{Binding Tabs.NewTabCommand}">
         <TextBlock Style="{StaticResource Glyph}" FontSize="12" Text="&#xE710;" />
