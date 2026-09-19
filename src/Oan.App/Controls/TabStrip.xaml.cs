@@ -13,6 +13,18 @@ public partial class TabStrip : UserControl
 {
     public TabStrip() => InitializeComponent();
 
+    /// <summary>
+    /// Hands the tabs the room that is left once the + has had its share. Without it the panel is
+    /// measured against infinity, every tab keeps its full width, and the + leaves the window.
+    /// </summary>
+    private void OnStripResized(object sender, SizeChangedEventArgs e)
+    {
+        var border = (Border)sender;
+        var taken = border.Padding.Left + border.Padding.Right + Plus.Width + Plus.Margin.Left;
+
+        Strip.MaxWidth = Math.Max(0, border.ActualWidth - taken);
+    }
+
     private TabsViewModel Tabs => ((MainViewModel)DataContext).Tabs;
 
     /// <summary>
