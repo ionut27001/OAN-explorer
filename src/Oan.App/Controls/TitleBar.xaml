@@ -58,8 +58,10 @@
                Margin="12,0,8,7" VerticalAlignment="Bottom"
                RenderOptions.BitmapScalingMode="HighQuality" />
 
-        <ctl:TabStrip Grid.Column="1" VerticalAlignment="Bottom"
-                      shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+        <!-- No IsHitTestVisibleInChrome here: it applies to the whole strip, and the strip is as
+             wide as the window, so every empty pixel beside the tabs stopped dragging the window.
+             The chips and the + opt out individually instead. -->
+        <ctl:TabStrip Grid.Column="1" VerticalAlignment="Bottom" />
 
         <!-- Ours, because UseAeroCaptionButtons draws nothing once the glass frame is gone, and a
              window you cannot close is not a styling problem. -->
