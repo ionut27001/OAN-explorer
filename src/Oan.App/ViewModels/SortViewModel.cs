@@ -59,16 +59,22 @@ public sealed class SortViewModel : Observable
         var order = _key switch
         {
             SortKey.Size => Nullable.Compare(x.SortSize, y.SortSize),
-            SortKey.Kind => string.Compare(x.KindText, y.KindText, StringComparison.CurrentCultureIgnoreCase),
+            // Ordinal: this is a token this program built, not language. Every other comparison
+            // in here is ordinal or StrCmpLogicalW, and a culture collation would be the one
+            // exception, on the hot path of a comparer called O(n log n) times.
+            SortKey.Kind => string.CompareOrdinal(x.KindText, y.KindText),
             SortKey.Modified => Nullable.Compare(a.Modified, b.Modified),
             _ => NaturalSort.Instance.Compare(a.Name, b.Name),
         };
 
-        if (_descending) order = -order;
+        // The name is the last term of the comparison, not a fallback applied after the
+        // direction: every folder has the same Type, so ordering by Type is a field of ties, and
+        // a tie-break left pointing one way made the second click produce a bit-identical list
+        // while the header drew an arrow saying otherwise.
+        if (order == 0) order = NaturalSort.Instance.Compare(a.Name, b.Name);
 
-        // Ties fall back to the name so the order is stable: without it a re-sort of equal rows
-        // shuffles them, and the eye reads that as the list having changed.
-        return order != 0 ? order : NaturalSort.Instance.Compare(a.Name, b.Name);
+        // Sign, because string.Compare only promises a sign, and negating int.MinValue keeps it.
+        return _descending ? -Math.Sign(order) : order;
     }
 
     private string Header(string text, SortKey key) =>

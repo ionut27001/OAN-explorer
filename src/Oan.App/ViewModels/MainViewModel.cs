@@ -71,7 +71,7 @@ public sealed class MainViewModel : Observable
         OpenPlaceCommand = new RelayCommand(p => Run(() => NavigateAsync((string)p!)));
         GoToCommand = new RelayCommand(p => Run(() => NavigateAsync(p as string ?? Address)));
         SortCommand = new RelayCommand(p => Sort.By((SortKey)p!));
-        Sort.Changed += Rebuild;
+        Sort.Changed += Reorder;
         FolderSizes.Settled += () =>
         {
             if (Sort.Key == SortKey.Size && Sort.Reorder(Rows) is { } bySize) Rows = bySize;
@@ -363,8 +363,11 @@ public sealed class MainViewModel : Observable
 
     private void ShowArchiveRows()
     {
+        var rows = Archive.Rows().Select(e => new EntryViewModel(e, Look.IconSize, measurable: false)).ToArray();
+        Array.Sort(rows, Sort.Compare);
+
         Selection = [];
-        Rows = [.. Archive.Rows().Select(e => new EntryViewModel(e, Look.IconSize, measurable: false))];
+        Rows = rows;
         Address = Archive.DisplayPath;
         Crumbs = Paths.Crumbs(Archive.DisplayPath);
 
@@ -684,6 +687,17 @@ public sealed class MainViewModel : Observable
         OnChanged(nameof(Filtering));
         OnChanged(nameof(StatusText));
         OnChanged(nameof(ListMessage));
+    }
+
+    /// <summary>
+    /// The rows come from two different places, and the sort has to go to whichever is showing.
+    /// Rebuild reads the filesystem listing, which inside an archive is the folder the archive
+    /// file sits in — sorting through it replaced the archive's contents with that folder's.
+    /// </summary>
+    private void Reorder()
+    {
+        if (Archive.Active) ShowArchiveRows();
+        else Rebuild();
     }
 
     /// <summary>Both filters at once: two ways to be hiding things, one way to stop.</summary>
