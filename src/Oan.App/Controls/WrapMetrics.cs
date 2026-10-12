@@ -1,9 +1,6 @@
 namespace Oan.App.Controls;
 
-/// <summary>
-/// The arithmetic of a uniform wrapping grid, kept apart from the panel so the index ranges can
-/// be tested without a window. An off-by-one here is a row of items that never gets realized.
-/// </summary>
+/// <summary>The arithmetic of a uniform wrapping grid, kept apart from the panel so it can be tested without a window.</summary>
 internal static class WrapMetrics
 {
     /// <summary>At least one, so a window narrower than a tile still draws it and never divides by zero.</summary>
@@ -14,9 +11,8 @@ internal static class WrapMetrics
         count <= 0 || columns <= 0 ? 0 : (count + columns - 1) / columns;
 
     /// <summary>
-    /// The first and last item index the viewport touches. An empty grid is the one input with no
-    /// answer and comes back as Last below First; everything else is clamped to a row that exists,
-    /// including an infinite viewport — measured outside a ScrollViewer the whole grid is drawn.
+    /// The first and last item index the viewport touches. An empty grid comes back as Last below First;
+    /// everything else is clamped to a row that exists, including an infinite viewport.
     /// </summary>
     public static (int First, int Last) VisibleRange(
         int count, int columns, double offset, double viewportHeight, double itemHeight)

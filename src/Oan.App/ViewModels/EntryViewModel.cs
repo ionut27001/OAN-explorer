@@ -3,18 +3,20 @@ using System.Windows.Media;
 using Oan.App.Platform;
 using Oan.Core.FileSystem;
 using Oan.Core.Model;
+using Oan.Core.Shell;
 
 namespace Oan.App.ViewModels;
 
 /// <summary>One row. The icon is requested the first time a realized row asks and arrives later.</summary>
-/// <param name="measurable">False where a folder's size can never be found, whatever anyone
-/// asks: inside an archive there is nothing to walk. That renders as "could not be read", not as
-/// the blank that means "nobody has asked yet".</param>
+/// <param name="measurable">False where a folder's size can never be found, as inside an archive.</param>
 public sealed class EntryViewModel(FileEntry entry, int iconSize, bool measurable = true)
     : INotifyPropertyChanged
 {
     private readonly SizeCell? _folder = entry.IsDirectory ? Cell(entry, measurable) : null;
     private ImageSource? _icon;
+    private ImageSource? _thumbnail;
+    private ImageSource? _badge;
+    private bool _badgeAsked;
     private bool _asked;
     private string? _kind;
     private int _size = iconSize;
@@ -24,11 +26,7 @@ public sealed class EntryViewModel(FileEntry entry, int iconSize, bool measurabl
     public FileEntry Entry { get; } = entry;
 
     public string Name => Entry.Name;
-    /// <summary>
-    /// A file knows its own size. A folder only knows one once something has walked it, and blank
-    /// until then — an unmeasured folder is not a folder of no size, and neither is one we could
-    /// not read, which is why those two look different.
-    /// </summary>
+    /// <summary>A file knows its own size. A folder is blank until something has walked it.</summary>
     public string SizeText => _folder?.Text ?? Format.Size(Entry.Size);
 
     /// <summary>What to sort on: a file's own length, or a folder's measured total.</summary>
@@ -36,6 +34,8 @@ public sealed class EntryViewModel(FileEntry entry, int iconSize, bool measurabl
 
     public string? SizeTip => _folder?.Tip(Entry.FullPath);
     public string ModifiedText => Format.Date(Entry.Modified);
+    public string CreatedText => Format.Date(Entry.Created);
+    public string AttributesText => Format.Attributes(Entry.Attributes);
     public bool IsHidden => Entry.IsHidden;
 
     /// <summary>Cached: sorting by kind compares this across every pair.</summary>
@@ -49,6 +49,29 @@ public sealed class EntryViewModel(FileEntry entry, int iconSize, bool measurabl
 
             _asked = true;
             Request();
+            return null;
+        }
+    }
+
+    /// <summary>The file's own picture if it has one, else its type's icon.</summary>
+    public ImageSource? Picture => _thumbnail ?? Icon;
+
+    /// <summary>The overlay badge (shortcut arrow, cloud status) or null. Drawn over Picture, not composited into it.</summary>
+    public ImageSource? Badge
+    {
+        get
+        {
+            if (_badgeAsked) return _badge;
+
+            _badgeAsked = true;
+            var size = _size;
+            ThumbnailPump.LoadBadge(Entry.FullPath, size, badge =>
+            {
+                if (_size != size) return;
+
+                _badge = badge;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Badge)));
+            });
             return null;
         }
     }
@@ -87,15 +110,18 @@ public sealed class EntryViewModel(FileEntry entry, int iconSize, bool measurabl
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SizeTip)));
     }
 
-    /// <summary>
-    /// The icon already on screen stays until the new size arrives, so switching view does not
-    /// blank every row. A row nobody has looked at yet simply asks at the new size when it does.
-    /// </summary>
+    /// <summary>The icon on screen stays until the new size arrives, so switching view does not blank every row.</summary>
     public void SetIconSize(int size)
     {
         if (_size == size) return;
 
         _size = size;
+
+        // A small picture stretched to the new size would be a blur.
+        _thumbnail = null;
+        _badge = null;
+        _badgeAsked = false;
+
         if (_asked) Request();
     }
 
@@ -104,12 +130,24 @@ public sealed class EntryViewModel(FileEntry entry, int iconSize, bool measurabl
         var size = _size;
         IconLoader.Load(Entry.FullPath, Entry.IsDirectory, size, icon =>
         {
-            // A second size change while this one was in the queue wins; both callbacks land on
-            // the dispatcher, so this cannot race with the field it reads.
+            // A second size change while this one was queued wins. Both callbacks land on the dispatcher.
             if (_size != size) return;
 
             _icon = icon;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Picture)));
+        });
+
+        // Below this the shell has no picture worth the call. Nor for a folder: Windows composites its thumbnail
+        // from the contents, and for anything but pictures that is a blank white page leaning out of the folder.
+        if (size < Thumbnails.Smallest || Entry.IsDirectory) return;
+
+        ThumbnailPump.Load(Entry.FullPath, Entry.IsDirectory, size, found =>
+        {
+            if (_size != size || found.Image is null) return;
+
+            _thumbnail = found.Image;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Picture)));
         });
     }
 }

@@ -8,12 +8,8 @@ using System.Windows.Threading;
 namespace Oan.App.Controls;
 
 /// <summary>
-/// Drag a rectangle over empty space to select what it touches.
-///
-/// Hit-testing runs against the panel's realised children, not the item list: with 50,000 rows
-/// only a few dozen containers exist, and asking the generator for the rest would both allocate
-/// them and defeat the virtualisation. What that costs is that the band can only select what has
-/// been realised — which is why it auto-scrolls at the edges, realising more as it goes.
+/// Drag a rectangle over empty space to select what it touches. Hit-tests the panel's realised children only,
+/// to keep virtualisation intact, which is why it auto-scrolls at the edges, realising more as it goes.
 /// </summary>
 public sealed class BandSelect
 {
@@ -36,6 +32,9 @@ public sealed class BandSelect
         _list = list;
         _scroller = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(16) };
         _scroller.Tick += (_, _) => Scroll();
+
+        // Alt+Tab or a dialog takes the capture without a button-up ever arriving.
+        _list.LostMouseCapture += (_, _) => End();
     }
 
     public bool Dragging => _dragging;
@@ -45,7 +44,7 @@ public sealed class BandSelect
     {
         _scroll = Descendant<ScrollViewer>(_list);
         _layer = AdornerLayer.GetAdornerLayer(_list);
-        if (_layer is null) return;
+        if (_scroll is null || _layer is null) return;
 
         _origin = e.GetPosition(_list);
         _dragging = true;
@@ -57,20 +56,25 @@ public sealed class BandSelect
 
         _band = new RubberBand(_list);
         _layer.Add(_band);
-        _list.CaptureMouse();
+
+        // Not the list: a ListBox holding the capture runs its own auto-scroll past the edges, selecting one row.
+        _scroll.CaptureMouse();
         e.Handled = true;
     }
 
     public void Move(MouseEventArgs e)
     {
         if (!_dragging || _band is null) return;
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            End();
+            return;
+        }
 
         var now = e.GetPosition(_list);
         _band.Update(new Rect(_origin, now));
         Select(new Rect(_origin, now));
 
-        // Past the top or bottom edge the list scrolls, which realises more containers and lets
-        // the band keep growing beyond one screenful.
         _autoScroll = now.Y < EdgeMargin ? now.Y - EdgeMargin
             : now.Y > _list.ActualHeight - EdgeMargin ? now.Y - (_list.ActualHeight - EdgeMargin)
             : 0;
@@ -85,7 +89,7 @@ public sealed class BandSelect
 
         _dragging = false;
         _scroller.Stop();
-        _list.ReleaseMouseCapture();
+        _scroll?.ReleaseMouseCapture();
 
         if (_band is not null) _layer?.Remove(_band);
         _band = null;
@@ -98,13 +102,12 @@ public sealed class BandSelect
 
         _scroll.ScrollToVerticalOffset(_scroll.VerticalOffset + _autoScroll / EdgeMargin * ScrollStep);
 
-        // Containers that scrolled into view have not been through Move yet, so the band is
-        // re-applied against the new set rather than waiting for the next mouse movement.
+        // Containers that scrolled into view have not been through Move yet, so the band is re-applied now.
         var cursor = Mouse.GetPosition(_list);
         Select(new Rect(_origin, cursor));
     }
 
-    private void Select(Rect band)
+    internal void Select(Rect band)
     {
         var host = ItemsHost(_list);
         if (host is null) return;
@@ -113,11 +116,8 @@ public sealed class BandSelect
 
         foreach (var child in host.Children)
         {
-            if (child is not ListViewItem { IsVisible: true } item) continue;
-
-            var topLeft = item.TranslatePoint(new Point(), _list);
-            if (band.IntersectsWith(new Rect(topLeft, item.RenderSize)) && item.DataContext is { } data)
-                wanted.Add(data);
+            if (child is ListViewItem { IsVisible: true, DataContext: { } data } item &&
+                band.IntersectsWith(Drawn(item))) wanted.Add(data);
         }
 
         var selected = _list.SelectedItems;
@@ -130,6 +130,14 @@ public sealed class BandSelect
         {
             if (!selected.Contains(data)) selected.Add(data);
         }
+    }
+
+    /// <summary>The item as drawn: a details row's container spans the list, its template only the columns.</summary>
+    private Rect Drawn(ListViewItem item)
+    {
+        var drawn = VisualTreeHelper.GetChildrenCount(item) == 1 &&
+                    VisualTreeHelper.GetChild(item, 0) is UIElement root ? root : item;
+        return new Rect(drawn.TranslatePoint(new Point(), _list), drawn.RenderSize);
     }
 
     private static Panel? ItemsHost(DependencyObject root)

@@ -3,15 +3,53 @@ using Oan.Core.Shell;
 
 namespace Oan.App.ViewModels;
 
-/// <summary>
-/// What the window looks like: how big the icons are, and what is behind it.
-///
-/// Both are settings, both are remembered, and neither has anything to do with which folder is
-/// open — which is why they are not in MainViewModel any more.
-/// </summary>
+/// <summary>What the window looks like: the view, the icons, the theme and what is behind it.</summary>
 public sealed class AppearanceViewModel(Settings settings, Action remember) : Observable
 {
     private bool _backdropSupported = true;
+
+    public string? ThemeName => settings.Theme;
+
+    /// <summary>Glass is acrylic cut into slabs, so while it is on the material is not a choice.</summary>
+    public bool Glass
+    {
+        get => settings.Glass;
+        set
+        {
+            if (settings.Glass == value) return;
+
+            settings.Glass = value;
+            Theme.Choose(settings.Theme, value);
+            OnChanged();
+            OnChanged(nameof(CanPickMaterial));
+            remember();
+        }
+    }
+
+    public bool CanPickMaterial => Supported && !Glass;
+
+    public System.Windows.Input.ICommand ViewCommand => new RelayCommand(p => View = int.Parse((string)p!));
+
+    public ColumnSet Columns { get; } = new(settings, remember);
+
+    /// <summary>"Follow Windows" first, then whatever is in the themes folder right now.</summary>
+    public IReadOnlyList<ThemeChoice> Themes =>
+        [new(null, settings.Theme is null), .. UserThemes.Names().Select(n => new ThemeChoice(n, n == settings.Theme))];
+
+    public System.Windows.Input.ICommand ChooseThemeCommand => new RelayCommand(p =>
+    {
+        settings.Theme = p as string;
+        Theme.Choose(settings.Theme, settings.Glass);
+        OnChanged(nameof(Themes));
+        remember();
+    });
+
+    public System.Windows.Input.ICommand OpenThemesCommand => new RelayCommand(() =>
+    {
+        UserThemes.EnsureFolder(Theme.IsDark);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(UserThemes.Folder) { UseShellExecute = true });
+        OnChanged(nameof(Themes));
+    });
 
     /// <summary>Set by the window. Returns false when Windows refused the attribute.</summary>
     public Func<Backdrop, bool>? Apply { get; set; }
@@ -19,35 +57,48 @@ public sealed class AppearanceViewModel(Settings settings, Action remember) : Ob
     /// <summary>Called when every row needs its icon re-fetched at the new size.</summary>
     public Action? IconSizeChanged { get; set; }
 
-    /// <summary>
-    /// One of the four sizes the shell keeps an image list for. 16 is the details view; anything
-    /// larger switches to the tile grid, because a details row with a 48px icon is mostly gap.
-    /// </summary>
-    public int IconSize
+    /// <summary>0 is the details table, 1 is the plain list, anything larger is the icon grid at that many pixels.</summary>
+    public int View
     {
-        get => settings.IconSize;
+        get => settings.View;
         set
         {
-            if (settings.IconSize == value) return;
+            if (settings.View == value) return;
 
-            settings.IconSize = value;
+            var was = IconSize;
+            settings.View = value;
 
-            // Each size is its own cache entry and a 256px bitmap is a quarter of a megabyte, so
-            // the size being left behind is dropped rather than kept for a switch back.
-            ShellIcons.Clear();
-            IconSizeChanged?.Invoke();
+            // Each size is its own cache entry and a 256px bitmap is a quarter of a megabyte, so the old size is dropped.
+            if (IconSize != was)
+            {
+                ShellIcons.Clear();
+                IconSizeChanged?.Invoke();
+            }
 
             OnChanged();
+            OnChanged(nameof(IconSize));
             OnChanged(nameof(IsDetails));
+            OnChanged(nameof(IsList));
             OnChanged(nameof(TileWidth));
             OnChanged(nameof(TileHeight));
             remember();
         }
     }
 
-    public bool IsDetails => IconSize == 16;
+    /// <summary>Ctrl+wheel: one view larger or smaller, stopping at either end.</summary>
+    public void Step(int by)
+    {
+        var next = Array.IndexOf(Settings.Views, View) + by;
+        if (next >= 0 && next < Settings.Views.Length) View = Settings.Views[next];
+    }
 
-    /// <summary>Which icons the sidebar and the tabs use. Remembered.</summary>
+    /// <summary>How big an icon the rows ask the shell for. Only the grid wants more than 16.</summary>
+    public int IconSize => View > Settings.Views_List ? View : 16;
+
+    public bool IsDetails => View == Settings.Views_Details;
+
+    public bool IsList => View == Settings.Views_List;
+
     public IconStyle Icons
     {
         get => settings.Icons;
@@ -62,14 +113,8 @@ public sealed class AppearanceViewModel(Settings settings, Action remember) : Ob
         }
     }
 
-    /// <summary>For the markup, which needs a boolean to hide one of two things.</summary>
     public bool PlainIcons => settings.Icons == IconStyle.Simple;
 
-    /// <summary>
-    /// The folder drawn as areas rather than listed. Remembered, because someone hunting disk
-    /// space is doing it across several folders and having to switch back each time is the
-    /// feature getting in its own way.
-    /// </summary>
     public bool Treemap
     {
         get => settings.Treemap;
@@ -83,10 +128,13 @@ public sealed class AppearanceViewModel(Settings settings, Action remember) : Ob
         }
     }
 
-    /// <summary>The tile a grid item is laid out in: the icon, then room for two lines of name.</summary>
-    public double TileWidth => IconSize + 48;
+    /// <summary>
+    /// The box one item is laid out in. The list wraps into columns across and scrolls down, where Explorer's
+    /// fills a column down and scrolls sideways: the panel scrolls one way.
+    /// </summary>
+    public double TileWidth => IsList ? 240 : IconSize + 48;
 
-    public double TileHeight => IconSize + 60;
+    public double TileHeight => IsList ? 24 : IconSize + 60;
 
     public Backdrop Backdrop
     {
@@ -112,9 +160,16 @@ public sealed class AppearanceViewModel(Settings settings, Action remember) : Ob
             if (!Set(ref _backdropSupported, value)) return;
 
             OnChanged(nameof(Note));
+            OnChanged(nameof(CanPickMaterial));
         }
     }
 
     public string? Note =>
         Supported ? null : "Not supported on this Windows build — the window stays solid.";
+}
+
+/// <summary>One line of the theme picker. A null name is "Follow Windows".</summary>
+public sealed record ThemeChoice(string? Name, bool Current)
+{
+    public string Label => Name ?? "Follow Windows";
 }

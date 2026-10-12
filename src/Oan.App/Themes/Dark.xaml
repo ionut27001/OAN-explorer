@@ -3,12 +3,11 @@
 
   <SolidColorBrush x:Key="WindowBg" Color="#202020" />
   <SolidColorBrush x:Key="Surface" Color="#282828" />
-  <!-- The selected tab at partial strength. Tab hover uses it rather than the generic Hover wash,
-       so a hovered tab can never read as brighter than the selected one, on any backdrop. -->
+  <!-- The selected tab at partial strength, so a hovered tab never reads as brighter than the selected one. -->
   <SolidColorBrush x:Key="SurfaceSoft" Color="#59282828" />
   <SolidColorBrush x:Key="Fg" Color="#F0F0F0" />
   <SolidColorBrush x:Key="FgMuted" Color="#A8A8A8" />
-  <SolidColorBrush x:Key="FgDim" Color="#7A7A7A" />
+  <SolidColorBrush x:Key="FgDim" Color="#969696" />
   <SolidColorBrush x:Key="Border" Color="#3C3C3C" />
   <SolidColorBrush x:Key="Accent" Color="#4CC2FF" />
   <SolidColorBrush x:Key="Warning" Color="#FF8A8A" />
@@ -18,13 +17,14 @@
   <SolidColorBrush x:Key="SelectedFg" Color="#FFFFFF" />
   <SolidColorBrush x:Key="ScrollThumb" Color="#6B6B6B" />
   <SolidColorBrush x:Key="ScrollThumbHover" Color="#9A9A9A" />
-  <!-- The caption band, the one strip above the layer. It keeps most of the backdrop, but not all
-       of it: acrylic samples whatever window is behind, and over a white one the tab titles and the
-       window buttons were measured at 1.31:1. It is also what the selected tab stands out from, so
-       it stays a step darker than the layer. -->
+  <!-- The caption band. Not fully clear: over a white window behind acrylic, the tab titles measured
+       1.31:1. A step darker than the layer, so the selected tab stands out from it. -->
   <SolidColorBrush x:Key="Caption" Color="#66000000" />
 
 
   <SolidColorBrush x:Key="FieldBg" Color="#333333" />
+
+  <!-- Menus and anything else that opens over the window: opaque whatever a theme does to Surface. -->
+  <SolidColorBrush x:Key="MenuBg" Color="#2C2C2C" />
 
 </ResourceDictionary>

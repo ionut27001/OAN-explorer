@@ -1,12 +1,35 @@
-<!-- The details view: the four columns and the headers that say which one the list is ordered
-     by. Here rather than in the window's own resources because it is a table definition, not a
-     window layout, and MainWindow.xaml is the file that keeps outgrowing its limit.
-
-     The header's Content stays the plain word - "Name", "Size", "Kind", "Modified" - because the
-     click handler parses it into a SortKey. The arrow lives in the HeaderTemplate, where it
-     cannot break that parse. -->
+<!-- The details view. The header's Content stays the plain word ("Name", "Size", "Kind", ...)
+     because the click handler parses it into a SortKey. The arrow lives in the HeaderTemplate. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ctl="clr-namespace:Oan.App.Controls">
+
+    <ctl:IsConverter x:Key="Is" />
+
+    <!-- Right-click on the column headers, as in Explorer. The column items are keyed by SortKey, as the headers are. -->
+    <ContextMenu x:Key="HeaderMenu">
+      <MenuItem Header="View">
+        <MenuItem Header="Details" Command="{Binding Look.ViewCommand}" CommandParameter="0"
+                  IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=0}" />
+        <MenuItem Header="List" Command="{Binding Look.ViewCommand}" CommandParameter="1"
+                  IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=1}" />
+        <MenuItem Header="Small icons" Command="{Binding Look.ViewCommand}" CommandParameter="32"
+                  IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=32}" />
+        <MenuItem Header="Medium icons" Command="{Binding Look.ViewCommand}" CommandParameter="48"
+                  IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=48}" />
+        <MenuItem Header="Large icons" Command="{Binding Look.ViewCommand}" CommandParameter="96"
+                  IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=96}" />
+        <MenuItem Header="Extra large icons" Command="{Binding Look.ViewCommand}" CommandParameter="256"
+                  IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=256}" />
+      </MenuItem>
+      <Separator />
+      <MenuItem Header="Name" IsCheckable="True" IsChecked="True" IsEnabled="False" />
+      <MenuItem Header="Size" IsCheckable="True" IsChecked="{Binding Look.Columns[Size]}" />
+      <MenuItem Header="Type" IsCheckable="True" IsChecked="{Binding Look.Columns[Kind]}" />
+      <MenuItem Header="Date modified" IsCheckable="True" IsChecked="{Binding Look.Columns[Modified]}" />
+      <MenuItem Header="Date created" IsCheckable="True" IsChecked="{Binding Look.Columns[Created]}" />
+      <MenuItem Header="Attributes" IsCheckable="True" IsChecked="{Binding Look.Columns[Attributes]}" />
+    </ContextMenu>
 
     <DataTemplate x:Key="NameHeaderTemplate">
       <TextBlock Text="{Binding DataContext.Sort.NameHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
@@ -20,14 +43,22 @@
     <DataTemplate x:Key="ModifiedHeaderTemplate">
       <TextBlock Text="{Binding DataContext.Sort.ModifiedHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
     </DataTemplate>
+    <DataTemplate x:Key="CreatedHeaderTemplate">
+      <TextBlock Text="{Binding DataContext.Sort.CreatedHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+    </DataTemplate>
+    <DataTemplate x:Key="AttributesHeaderTemplate">
+      <TextBlock Text="{Binding DataContext.Sort.AttributesHeader, RelativeSource={RelativeSource AncestorType=ListView}}" />
+    </DataTemplate>
 
     <GridView x:Key="DetailsView" AllowsColumnReorder="False">
       <GridViewColumn Header="Name" HeaderTemplate="{StaticResource NameHeaderTemplate}" Width="380">
         <GridViewColumn.CellTemplate>
           <DataTemplate>
             <StackPanel x:Name="Cell" Orientation="Horizontal">
-              <Image Width="16" Height="16" Margin="0,0,10,0" Source="{Binding Icon}"
-                     RenderOptions.BitmapScalingMode="HighQuality" />
+              <Grid Width="16" Height="16" Margin="0,0,10,0">
+                <Image Source="{Binding Picture}" RenderOptions.BitmapScalingMode="HighQuality" />
+                <Image Source="{Binding Badge}" RenderOptions.BitmapScalingMode="HighQuality" />
+              </Grid>
               <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                          TextTrimming="CharacterEllipsis" />
             </StackPanel>
@@ -53,6 +84,16 @@
                       DisplayMemberBinding="{Binding KindText}" />
       <GridViewColumn Header="Modified" HeaderTemplate="{StaticResource ModifiedHeaderTemplate}" Width="170"
                       DisplayMemberBinding="{Binding ModifiedText}" />
+      <GridViewColumn Header="Created" HeaderTemplate="{StaticResource CreatedHeaderTemplate}" Width="170"
+                      DisplayMemberBinding="{Binding CreatedText}" />
+      <GridViewColumn Header="Attributes" HeaderTemplate="{StaticResource AttributesHeaderTemplate}" Width="90"
+                      DisplayMemberBinding="{Binding AttributesText}" />
     </GridView>
+
+    <!-- The background makes the empty space under and beside the rows part of the scrolled content,
+         where a press starts a rubber band. Without one it falls through to the ScrollViewer. -->
+    <ItemsPanelTemplate x:Key="RowPanel">
+      <VirtualizingStackPanel Background="Transparent" />
+    </ItemsPanelTemplate>
 
 </ResourceDictionary>

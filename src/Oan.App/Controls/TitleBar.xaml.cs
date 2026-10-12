@@ -3,12 +3,7 @@ using System.Windows.Controls;
 
 namespace Oan.App.Controls;
 
-/// <summary>
-/// The caption band: logo, tabs, and the three window buttons.
-///
-/// It is the whole title bar, because the tab strip belongs in it — below it the strip had to
-/// appear and disappear with the tab count and the page jumped when it did.
-/// </summary>
+/// <summary>The caption band, which is the whole title bar: logo, tabs, and the three window buttons.</summary>
 public partial class TitleBar : UserControl
 {
     public TitleBar()
@@ -23,6 +18,11 @@ public partial class TitleBar : UserControl
 
     private Window Window => Window.GetWindow(this)!;
 
+    /// <summary>Under the logo rather than at the pointer, so left and right click open the menu in the same place.</summary>
+    private void OnLogoClick(object sender, RoutedEventArgs e) => MenuButton.Under(sender);
+
+    private void OnSettingsClick(object sender, RoutedEventArgs e) => SettingsWindow.Open(Window);
+
     private void OnMinimiseClick(object sender, RoutedEventArgs e) => Window.WindowState = WindowState.Minimized;
 
     private void OnMaximiseClick(object sender, RoutedEventArgs e) =>
@@ -35,9 +35,7 @@ public partial class TitleBar : UserControl
 
         var maximised = Window.WindowState == WindowState.Maximized;
 
-        // A maximised WPF window under a custom chrome hangs its edges past the work area; the
-        // margin puts them back. Set here rather than bound, because the window is not a view
-        // model and inventing a notification on it to serve two glyphs is not worth the class.
+        // A maximised WPF window under a custom chrome hangs its edges past the work area; the margin puts them back.
         Window.BorderThickness = maximised ? new Thickness(8) : new Thickness(0);
         MaximiseButton.Content = maximised ? "" : "";
         MaximiseButton.ToolTip = maximised ? "Restore" : "Maximise";

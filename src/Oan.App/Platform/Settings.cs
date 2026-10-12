@@ -4,19 +4,12 @@ using System.Text.Json.Serialization;
 
 namespace Oan.App.Platform;
 
-/// <summary>
-/// MicaAlt is DWMSBT_TABBEDWINDOW: the material Windows 11 made for tabbed windows, and the one
-/// Explorer itself uses. It pulls the caption band further from the content than plain Mica does,
-/// which is what makes a strip of tabs read as part of the window rather than pasted on top.
-/// </summary>
+/// <summary>MicaAlt is DWMSBT_TABBEDWINDOW, the material Windows 11 made for tabbed windows and Explorer uses.</summary>
 public enum Backdrop { Mica, MicaAlt, Acrylic, Solid }
 
 /// <summary>
-/// Where the sidebar and the tabs get their icons. Windows is the shell's own, which knows what
-/// a folder actually is — Downloads, a drive, one you gave your own icon. Simple is one glyph
-/// per kind, flat and in the accent colour, which some people prefer precisely because it does
-/// not vary. The file list is not affected either way: a row is a specific file, and a glyph
-/// standing in for it would be telling you less than nothing.
+/// Where the sidebar and the tabs get their icons: the shell's own, or one flat glyph per kind.
+/// The file list always uses the shell's.
 /// </summary>
 public enum IconStyle { Windows, Simple }
 
@@ -26,7 +19,10 @@ public enum IconStyle { Windows, Simple }
 /// </summary>
 public sealed class Settings
 {
-    private static readonly int[] Sizes = [16, 32, 48, 256];
+    internal static readonly int[] Views = [Views_Details, Views_List, 32, 48, 96, 256];
+
+    internal const int Views_Details = 0;
+    internal const int Views_List = 1;
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -34,19 +30,30 @@ public sealed class Settings
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public int IconSize { get; set; } = 16;
+    /// <summary>
+    /// 0 is the details table, 1 is the plain list, anything larger is the icon grid at that many pixels.
+    /// One number, because a mode plus a size would be free to disagree.
+    /// </summary>
+    public int View { get; set; } = Views_Details;
 
     public Backdrop Backdrop { get; set; } = Backdrop.MicaAlt;
 
-    /// <summary>Measure folder sizes in the listing. On, because a size column that is blank
-    /// until you find a switch is a size column nobody knows exists.</summary>
+    /// <summary>Measure folder sizes in the listing.</summary>
     public bool FolderSizes { get; set; } = true;
 
-    /// <summary>Show the folder as areas instead of as a list. Off: the list is what a file
-    /// manager is for, and the map is for the question "where did the space go".</summary>
+    /// <summary>Show the size map of the folder. Off by default.</summary>
     public bool Treemap { get; set; }
 
     public IconStyle Icons { get; set; } = IconStyle.Windows;
+
+    /// <summary>The window as separate slabs of acrylic, with the desktop showing between them.</summary>
+    public bool Glass { get; set; }
+
+    /// <summary>A file in the themes folder, by name. Null follows Windows between light and dark.</summary>
+    public string? Theme { get; set; }
+
+    /// <summary>The details columns shown besides Name, by their sort key.</summary>
+    public List<string> Columns { get; set; } = ["Size", "Kind", "Modified"];
 
     public static string DefaultPath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OAN", "settings.json");
@@ -89,9 +96,10 @@ public sealed class Settings
     /// </summary>
     private Settings Checked()
     {
-        if (!Sizes.Contains(IconSize)) IconSize = 16;
+        if (!Views.Contains(View)) View = Views_Details;
         if (!Enum.IsDefined(Backdrop)) Backdrop = Backdrop.MicaAlt;
         if (!Enum.IsDefined(Icons)) Icons = IconStyle.Windows;
+        Columns ??= new Settings().Columns;
         return this;
     }
 }

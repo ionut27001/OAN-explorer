@@ -7,12 +7,7 @@ using Oan.Core.Navigation;
 
 namespace Oan.App.ViewModels;
 
-/// <summary>
-/// One tab: where it is, and how it got there.
-///
-/// The history is per tab and not shared, which is the whole point — Back in one tab must not
-/// walk through folders another tab visited.
-/// </summary>
+/// <summary>One tab: where it is, and its own history, so Back never walks through another tab's folders.</summary>
 public sealed class TabViewModel : Observable
 {
     private string _path = "";
@@ -36,17 +31,10 @@ public sealed class TabViewModel : Observable
         }
     }
 
-    /// <summary>
-    /// The folder's own icon, which is what Explorer puts on a tab. Null until the shell answers
-    /// and for a tab with nowhere to point yet; the chip shows a plain folder glyph until then.
-    /// </summary>
+    /// <summary>The folder's own icon. Null until the shell answers, and for a tab with nowhere to point yet.</summary>
     public ImageSource? Icon { get => _icon; private set => Set(ref _icon, value); }
 
-    /// <summary>
-    /// Asked again on every navigation, unlike a sidebar place whose path never moves. An answer
-    /// for a folder the tab has already left is dropped — both the request and the reply land on
-    /// the dispatcher, so reading the path back cannot race the write that changed it.
-    /// </summary>
+    /// <summary>Asked again on every navigation. An answer for a folder the tab has already left is dropped.</summary>
     private void Request()
     {
         var wanted = _path;
@@ -62,10 +50,7 @@ public sealed class TabViewModel : Observable
         });
     }
 
-    /// <summary>
-    /// The folder's own name. A drive root has none — <c>GetFileName("C:\")</c> is empty — so it
-    /// keeps the root itself rather than showing a tab with a blank label.
-    /// </summary>
+    /// <summary>The folder's own name. A drive root has none (GetFileName("C:\") is empty), so it keeps the root.</summary>
     public string Title
     {
         get
@@ -79,12 +64,7 @@ public sealed class TabViewModel : Observable
     }
 }
 
-/// <summary>
-/// The strip of tabs, and which one the window is showing.
-///
-/// Opening, closing and switching are all here; the folder itself is still loaded by
-/// MainViewModel, which asks this object where the active tab is pointing.
-/// </summary>
+/// <summary>The strip of tabs, and which one the window is showing. The folder itself is loaded by MainViewModel.</summary>
 public sealed class TabsViewModel : Observable
 {
     private TabViewModel _active;
@@ -130,7 +110,7 @@ public sealed class TabsViewModel : Observable
     public ICommand NextTabCommand { get; }
     public ICommand PreviousTabCommand { get; }
 
-    /// <summary>A new tab opens beside the active one, the way a browser does, not at the end.</summary>
+    /// <summary>A new tab opens beside the active one, not at the end.</summary>
     public TabViewModel Open(string path)
     {
         var tab = new TabViewModel { Path = path };
@@ -151,8 +131,7 @@ public sealed class TabsViewModel : Observable
         Items.Remove(tab);
         Announce();
 
-        // Closing the one you are looking at hands you the one on its right, then its left —
-        // the same place a browser leaves you.
+        // Closing the active tab hands you the one on its right, then its left.
         if (wasActive) Active = Items[Math.Min(index, Items.Count - 1)];
     }
 
@@ -166,7 +145,6 @@ public sealed class TabsViewModel : Observable
         if (from != to) Items.Move(from, to);
     }
 
-    /// <summary>Remembers where the active tab is, so switching back returns to it.</summary>
     public void Visited(string path) => Active.Path = path;
 
     private void Step(int by)
@@ -174,7 +152,6 @@ public sealed class TabsViewModel : Observable
         var index = Items.IndexOf(_active);
         if (index < 0 || Items.Count < 2) return;
 
-        // Wraps: Ctrl+Tab on the last tab goes to the first, as every tabbed program does.
         Active = Items[(index + by + Items.Count) % Items.Count];
     }
 

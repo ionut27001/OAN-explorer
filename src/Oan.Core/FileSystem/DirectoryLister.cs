@@ -8,14 +8,8 @@ public sealed class ListOptions
     public bool ShowHidden { get; init; }
 }
 
-/// <summary>
-/// Reads a folder into <see cref="FileEntry"/> values.
-///
-/// Uses <see cref="FileSystemEnumerator{T}"/> rather than DirectoryInfo.GetFileSystemInfos:
-/// the transform runs against the raw directory record, so name, attributes, size and
-/// timestamps all come from the single enumeration pass — no per-entry stat call, no FileInfo
-/// allocation.
-/// </summary>
+/// <summary>Reads a folder into <see cref="FileEntry"/> values. <see cref="FileSystemEnumerator{T}"/> transforms the raw directory record,
+/// so there is no per-entry stat call and no FileInfo allocation.</summary>
 public static class DirectoryLister
 {
     public static DirectoryListing List(string path, ListOptions? options = null, CancellationToken ct = default)
@@ -29,9 +23,7 @@ public static class DirectoryLister
                 ? "That is a file, not a folder."
                 : "This folder no longer exists.");
 
-        // Before the loop, not only inside it: an empty folder never enters the loop, so a
-        // request that was cancelled before it started would otherwise come back as a clean
-        // listing of nothing.
+        // Checked before the loop too: an empty folder never enters it, and would come back as a clean listing of nothing.
         ct.ThrowIfCancellationRequested();
 
         var entries = new List<FileEntry>(256);
@@ -60,27 +52,15 @@ public static class DirectoryLister
     public static Task<DirectoryListing> ListAsync(string path, ListOptions? options = null, CancellationToken ct = default) =>
         Task.Run(() => List(path, options, ct), ct);
 
-    /// <summary>
-    /// Subclassed for one reason: <see cref="ContinueOnError"/>.
-    ///
-    /// With EnumerationOptions.IgnoreInaccessible the runtime swallows unreadable entries and
-    /// offers no callback, so a folder with denied items enumerates as if those items were not
-    /// there — a partial listing indistinguishable from a complete one.
-    ///
-    /// Turning it off gives us the callback, but then the two failures arrive down the same
-    /// path and must be told apart: failing to open the folder at all is an Error, failing on
-    /// one entry inside it is a Skip. Nothing has been produced yet when the first is what
-    /// happened, so that is the test — and returning false there lets the exception through to
-    /// be reported as a refusal instead of as an empty folder.
-    /// </summary>
+    /// <summary>Subclassed for <see cref="ContinueOnError"/>: IgnoreInaccessible swallows unreadable entries with no callback, so a partial
+    /// listing looks complete. With it off, nothing produced yet means the folder itself failed (an Error); later failures are Skips.</summary>
     private sealed class Enumerator : FileSystemEnumerator<FileEntry>
     {
         private readonly FileAttributes _skip;
         private bool _produced;
 
-        // AttributesToSkip must be cleared: it defaults to Hidden|System and is applied by the
-        // base enumerator BEFORE ShouldIncludeEntry runs, so leaving it made ShowHidden=true a
-        // setting that was read and had no effect. All filtering happens in one place below.
+        // AttributesToSkip defaults to Hidden|System and is applied BEFORE ShouldIncludeEntry, so it must be cleared
+        // or ShowHidden has no effect.
         public Enumerator(string path, bool showHidden)
             : base(path, new EnumerationOptions
             {
@@ -105,6 +85,7 @@ public static class DirectoryLister
                 Attributes = entry.Attributes,
                 Size = entry.IsDirectory ? null : entry.Length,
                 Modified = entry.LastWriteTimeUtc.LocalDateTime,
+                Created = entry.CreationTimeUtc.LocalDateTime,
             };
         }
 

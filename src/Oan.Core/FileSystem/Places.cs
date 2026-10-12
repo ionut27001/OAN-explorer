@@ -13,11 +13,7 @@ public sealed record Place
     /// <summary>False when the path is gone — a pinned folder that was deleted, an unmounted drive.</summary>
     public bool Available { get; init; } = true;
 
-    /// <summary>
-    /// A drive that is an optical device — which on this machine means a mounted image far more
-    /// often than a disc. It is not the same thing as a hard disk and must not look like one: its
-    /// capacity bar is always full, and "0 bytes free of 20 GB" is true and useless.
-    /// </summary>
+    /// <summary>An optical drive, usually a mounted image. Its capacity bar is always full, so it must not look like a hard disk.</summary>
     public bool IsOptical { get; init; }
 
     /// <summary>Drives only. Null when the size could not be read, which is not the same as full.</summary>
@@ -42,15 +38,8 @@ public static class Places
         (Environment.SpecialFolder.MyVideos, "Videos"),
     ];
 
-    /// <summary>
-    /// Starred paths, resolved for display, in the order the user starred them.
-    ///
-    /// A path that no longer exists comes back with Available false rather than being dropped:
-    /// a star is something the user put there, and silently removing it is both a loss and
-    /// indistinguishable from never having starred it. Renaming or moving a starred item does
-    /// break the entry — it is stored by path — and the honest answer is to show it as gone so
-    /// the user can act, not to guess.
-    /// </summary>
+    /// <summary>Starred paths, resolved for display, in the order the user starred them.
+    /// A path that no longer exists comes back with Available false rather than being dropped.</summary>
     public static IReadOnlyList<Place> Starred(IEnumerable<string> paths)
     {
         var places = new List<Place>();

@@ -2,14 +2,7 @@ using Oan.Core.Search;
 
 namespace Oan.App.ViewModels;
 
-/// <summary>
-/// The question the search box is asking, and what came back of it.
-///
-/// Split out of MainViewModel for the same reason MountsViewModel was: the options, the
-/// cancellation and the tally are one concern with its own state, and leaving them in the window's
-/// model is how a class becomes the place everything lives. The rows stay with MainViewModel,
-/// which owns the list — this object never touches them.
-/// </summary>
+/// <summary>The question the search box is asking, and what came back of it. The rows stay with MainViewModel.</summary>
 public sealed class SearchViewModel : Observable
 {
     private CancellationTokenSource? _running;
@@ -43,10 +36,7 @@ public sealed class SearchViewModel : Observable
 
     public CancellationToken Token => _running?.Token ?? CancellationToken.None;
 
-    /// <summary>
-    /// The query, or null when there is nothing to ask or the pattern will not compile. A regex
-    /// that does not compile is an error, never a search that found nothing.
-    /// </summary>
+    /// <summary>The query, or null. A regex that does not compile is an error, never a search that found nothing.</summary>
     public SearchQuery? Build(string term, string root, bool includeHidden)
     {
         term = term.Trim();

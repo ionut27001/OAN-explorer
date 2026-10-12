@@ -29,6 +29,17 @@ public static class Format
     public static string Date(DateTime? when) =>
         when?.ToString("g", CultureInfo.CurrentCulture) ?? "—";
 
+    /// <summary>Explorer's letters, in its order: R H S D A C E.</summary>
+    public static string Attributes(FileAttributes attributes) =>
+        string.Concat(Letters.Where(l => (attributes & l.Flag) != 0).Select(l => l.Letter));
+
+    private static readonly (FileAttributes Flag, char Letter)[] Letters =
+    [
+        (FileAttributes.ReadOnly, 'R'), (FileAttributes.Hidden, 'H'), (FileAttributes.System, 'S'),
+        (FileAttributes.Directory, 'D'), (FileAttributes.Archive, 'A'), (FileAttributes.Compressed, 'C'),
+        (FileAttributes.Encrypted, 'E'),
+    ];
+
     public static string Kind(FileEntry entry)
     {
         if (entry.IsDirectory) return "File folder";

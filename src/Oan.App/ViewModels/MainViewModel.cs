@@ -13,12 +13,9 @@ using Oan.Core.Shell;
 
 namespace Oan.App.ViewModels;
 
-public enum SortKey { Name, Size, Kind, Modified }
+public enum SortKey { Name, Size, Kind, Modified, Created, Attributes }
 
-/// <summary>
-/// An entry of the New submenu; a null template is the folder. It carries the command because a
-/// menu inside a popup has no ancestor to reach the view model through.
-/// </summary>
+/// <summary>An entry of the New submenu; a null template is the folder. A menu in a popup cannot reach the view model, so it carries its command.</summary>
 public sealed record NewItem(string Label, string? Gesture, ICommand Command, NewFileTemplate? Template);
 
 public sealed class MainViewModel : Observable, IFileOpsHost
@@ -26,16 +23,13 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     private readonly IFileOperations _ops;
     private readonly Settings _settings;
     private readonly FileOps _files;
+    private readonly ArchiveOps _archives;
     private CancellationTokenSource? _load;
-    /// <summary>Hits are appended in batches: one notification per hit would spend the whole
-    /// search in layout on a folder that returns thousands.</summary>
-    private const int BatchSize = 64;
-
-    // Ours, kept below the shell's own numbering so a pick says whose it is.
-    private const int MountId = 1;
-    private const int EjectId = 2;
+    /// <summary>Hits arrive in batches: one notification per hit spends the search in layout.</summary>
 
     private DirectoryListing _listing = new() { Path = "", Entries = [] };
+
+    private readonly SearchRuns _searches;
     private IReadOnlyList<EntryViewModel> _rows = [];
     private IReadOnlyList<EntryViewModel> _selection = [];
     private IReadOnlyList<Crumb> _crumbs = [];
@@ -44,6 +38,7 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     private string _filter = "";
     private string _freeText = "";
     private string? _notice;
+    private string? _info;
     private bool _busy;
     private bool _showHidden;
     private bool _canPaste;
@@ -55,12 +50,15 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         _ops = ops;
         _settings = settings;
         _files = new FileOps(ops, this);
+        _archives = new ArchiveOps(this, Archive);
+        Archive.AskPassword = name => AskPassword?.Invoke(name);
         var look = new AppearanceViewModel(settings, Remember);
         FolderSizes = new FolderSizesViewModel(settings, Remember);
         look.IconSizeChanged = () => { foreach (var row in Rows) row.SetIconSize(look.IconSize); };
         Look = look;
         Mounts = mounts ?? new MountsViewModel();
         Mounts.Bind(path => Run(() => NavigateAsync(path)), Report, () => CurrentPath);
+        OwnMenu = new OwnMenu(Mounts, _archives, new ViewMenu(look), () => _selection, Run);
 
         BackCommand = new RelayCommand(() => Go(Tabs.Active.History.Back()), () => Tabs.Active.History.CanGoBack);
         ForwardCommand = new RelayCommand(() => Go(Tabs.Active.History.Forward()), () => Tabs.Active.History.CanGoForward);
@@ -79,7 +77,8 @@ public sealed class MainViewModel : Observable, IFileOpsHost
             if (Sort.Key == SortKey.Size && Sort.Reorder(Rows) is { } bySize) Rows = bySize;
         };
 
-        CopyCommand = new RelayCommand(() => _files.PutOnClipboard(cut: false), () => HasSelection);
+        CopyCommand = new RelayCommand(() => _files.PutOnClipboard(cut: false), () => CanCopyOut);
+        CopyPathCommand = new RelayCommand(_files.CopyPaths, () => CanCopyOut);
         CutCommand = new RelayCommand(() => _files.PutOnClipboard(cut: true), () => HasSelection && CanWriteHere);
         PasteCommand = new RelayCommand(() => Run(_files.PasteAsync), () => CanPaste && CanWriteHere);
         RenameCommand = new RelayCommand(() => Run(_files.RenameAsync), () => _selection.Count == 1 && CanWriteHere);
@@ -88,22 +87,22 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         NewFolderCommand = new RelayCommand(() => Run(_files.NewFolderAsync), () => CanWriteHere);
         NewItemCommand = new RelayCommand(p => Run(() => _files.NewAsync((NewItem)p!)), _ => CanWriteHere);
         OpenSelectionCommand = new RelayCommand(OpenSelection, () => HasSelection);
+        ExtractCommand = new RelayCommand(() => Run(() => _archives.ExtractAsync(ownFolder: true)), () => Archive.Active || SelectionHasArchive);
+        CompressCommand = new RelayCommand(() => Run(_archives.CompressAsync), () => HasSelection && CanWriteHere);
         BackdropCommand = new RelayCommand(p => Look.Backdrop = (Backdrop)p!);
         KindCommand = new RelayCommand(p => KindFilter = (FileKind)p!);
         ClearFiltersCommand = new RelayCommand(ClearFilters, () => Filtering);
         SearchCommand = new RelayCommand(() => Run(SearchAsync), () => _filter.Trim().Length > 0 && CurrentPath.Length > 0);
         StopSearchCommand = new RelayCommand(Search.Stop, () => Search.Running);
         EndSearchCommand = new RelayCommand(EndSearch, () => Search.Active);
+        _searches = new SearchRuns(Search);
         Search.Changed += Announce;
 
         _newItems = [new NewItem("Folder", "Ctrl+Shift+N", NewItemCommand, null)];
         _ = LoadTemplatesAsync();
     }
 
-    /// <summary>
-    /// The registry scan walks every class the machine has registered, so it happens once, off the
-    /// UI thread, and the menu grows the moment it lands rather than making the first click wait.
-    /// </summary>
+    /// <summary>The registry scan is slow, so it runs once, off the UI thread.</summary>
     private async Task LoadTemplatesAsync()
     {
         var templates = await Task.Run(ShellNew.Templates);
@@ -113,19 +112,21 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     /// <summary>Parents the shell's progress and conflict dialogs. Set by the window.</summary>
     public nint OwnerHandle { get; set; }
 
-    /// <summary>Asks the user for a name (title, suggestion) and returns null if they cancel. Set by the window.</summary>
+    /// <summary>(title, suggestion) to a name, or null on cancel. Set by the window.</summary>
     public Func<string, string, string?>? AskName { get; set; }
 
-    /// <summary>Re-applies the selection to the rows a rebuild replaced. Set by the window.</summary>
+    /// <summary>The archive's name to its password, or null. Set by the window.</summary>
+    public Func<string, string?>? AskPassword { get; set; }
+
+    /// <summary>Re-selects rows after a rebuild replaced them. Set by the window.</summary>
     public Action<IReadOnlyList<EntryViewModel>>? Reselect { get; set; }
 
-    /// <summary>Puts the backdrop on the window and answers whether Windows took it. Set by the window.</summary>
 
-    /// <summary>The disk images OAN has attached, and the only way it opens one.</summary>
     public MountsViewModel Mounts { get; }
 
     public SearchViewModel Search { get; } = new();
     public ArchiveViewModel Archive { get; } = new();
+    public OwnMenu OwnMenu { get; }
     public SortViewModel Sort { get; } = new();
     public TabsViewModel Tabs { get; } = new();
     public AppearanceViewModel Look { get; }
@@ -138,6 +139,7 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     public ICommand GoToCommand { get; }
     public ICommand SortCommand { get; }
     public ICommand CopyCommand { get; }
+    public ICommand CopyPathCommand { get; }
     public ICommand CutCommand { get; }
     public ICommand PasteCommand { get; }
     public ICommand RenameCommand { get; }
@@ -146,11 +148,12 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     public ICommand NewFolderCommand { get; }
     public ICommand NewItemCommand { get; }
     public ICommand OpenSelectionCommand { get; }
+    public ICommand ExtractCommand { get; }
+    public ICommand CompressCommand { get; }
     public ICommand BackdropCommand { get; }
     public ICommand KindCommand { get; }
     public ICommand ClearFiltersCommand { get; }
 
-    /// <summary>Enter in the search box: walk the tree instead of filtering the loaded rows.</summary>
     public ICommand SearchCommand { get; }
     public ICommand StopSearchCommand { get; }
     public ICommand EndSearchCommand { get; }
@@ -179,10 +182,16 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     public string Filter
     {
         get => _filter;
-        set { if (Set(ref _filter, value)) Rebuild(); }
+        set
+        {
+            if (!Set(ref _filter, value)) return;
+
+            // During a search this box is the query: rebuilding on it would drop the results per keystroke.
+            if (Search.Active) OnChanged(nameof(Filtering));
+            else Rebuild();
+        }
     }
 
-    /// <summary>The second filter, and it stacks with the name: both set means both applied.</summary>
     public FileKind KindFilter
     {
         get => _kind;
@@ -196,12 +205,10 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         }
     }
 
-    /// <summary>Empty when every kind is shown, so the toolbar button is a bare funnel.</summary>
     public string KindFilterText => _kind == FileKind.All ? "" : _kind.ToString();
 
     public bool KindFiltered => _kind != FileKind.All;
 
-    /// <summary>True when something is being hidden — which the status bar has to admit to.</summary>
     public bool Filtering => _filter.Length > 0 || _kind != FileKind.All;
 
     public bool ShowHidden
@@ -225,74 +232,19 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         }
     }
 
+    public string StatusText => Search.Active || Archive.Active || !Busy
+        ? StatusTexts.Status(Search, Archive.Active, CurrentPath, Rows.Count, _listing.Entries.Count, Filtering, _selection)
+        : "Reading folder…";
 
-    public string StatusText
-    {
-        get
-        {
-            if (Search.Active)
-            {
-                var running = Search.Running;
-                var head = running ? $"Searching… {Rows.Count} found" : $"{Rows.Count} found";
-                var seen = $"  ·  {Search.Tally.FilesSeen:N0} files in {Search.Tally.FoldersSeen:N0} folders";
-                return head + seen + (_selection.Count > 0 ? $"  ·  {_selection.Count} selected" : "");
-            }
+    public string? WarningText => _notice ?? StatusTexts.Warning(Search, _listing);
 
-            if (Archive.Active)
-            {
-                var inside = $"{Rows.Count} item{(Rows.Count == 1 ? "" : "s")} in this archive — read only";
-                return _selection.Count > 0 ? $"{inside}  ·  {_selection.Count} selected" : inside;
-            }
+    public string? ListMessage => StatusTexts.Empty(Search, _listing, Rows.Count, Filtering);
 
-            if (Busy) return "Reading folder…";
-            if (CurrentPath.Length == 0) return "";
-
-            var text = Filtering
-                ? $"{Rows.Count} of {_listing.Entries.Count} items"
-                : $"{Rows.Count} item{(Rows.Count == 1 ? "" : "s")}";
-
-            if (_selection.Count > 0) text += $"  ·  {_selection.Count} selected";
-            return text;
-        }
-    }
-
-    /// <summary>Set whenever the listing was partial or an operation went wrong. Never silent.</summary>
-    public string? WarningText
-    {
-        get
-        {
-            if (_notice is not null) return _notice;
-            if (Search.Error is not null) return Search.Error;
-
-            // Un rezultat incomplet nu se prezinta ca total.
-            if (Search.Active && !Search.Tally.Complete)
-            {
-                var parts = new List<string>();
-                if (Search.Tally.Denied > 0) parts.Add($"{Search.Tally.Denied} folder(s) denied");
-                if (Search.Tally.Unreadable > 0) parts.Add($"{Search.Tally.Unreadable} file(s) unreadable");
-                if (Search.Tally.TooLarge > 0) parts.Add($"{Search.Tally.TooLarge} too large to scan");
-                if (parts.Count > 0) return "Results are a floor, not a total — " + string.Join(", ", parts);
-            }
-
-            if (_listing.Error is not null) return _listing.Error;
-            return _listing.Skipped > 0 ? $"{_listing.Skipped} item(s) in this folder could not be read" : null;
-        }
-    }
-
-    /// <summary>What the empty list area says. A failed listing never reads as an empty folder.</summary>
-    public string? ListMessage
-    {
-        get
-        {
-            if (_listing.Error is not null) return _listing.Error;
-            if (Rows.Count > 0 || CurrentPath.Length == 0) return null;
-            if (Search.Active) return Search.Running ? null : "Nothing matched.";
-            return Filtering ? "No items match the filter." : "This folder is empty.";
-        }
-    }
+    /// <summary>Where a window opened from another one begins. Null is the user's own folder.</summary>
+    public string? StartAt { get; init; }
 
     public void Start() =>
-        Run(() => NavigateAsync(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+        Run(() => NavigateAsync(StartAt ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
 
     public async Task NavigateAsync(string path)
     {
@@ -314,8 +266,7 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     {
         if (Archive.Active)
         {
-            // Inside one already: a folder walks deeper, a file is extracted to temp and opened
-            // read-only, because nothing written back would reach the archive.
+            // A folder walks deeper; a file is extracted to temp and opened read-only.
             if (row.Entry.IsDirectory) OpenInsideArchive(row);
             else Run(() => OpenFromArchiveAsync(row));
             return;
@@ -333,14 +284,13 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         else Launch(row.Entry.FullPath);
     }
 
-
     private async Task EnterArchiveAsync(string archivePath)
     {
         Busy = true;
         try
         {
-            if (await Archive.OpenAsync(archivePath) is { } error) Notice = error;
-            else ShowArchiveRows();
+            Notice = await Archive.OpenAsync(archivePath);
+            if (Notice is null) ShowArchiveRows();
         }
         finally
         {
@@ -382,80 +332,46 @@ public sealed class MainViewModel : Observable, IFileOpsHost
 
     public IReadOnlyList<string> SelectedPaths() => _selection.Select(r => r.Entry.FullPath).ToArray();
 
-    /// <summary>
-    /// The selection as the shell wants it. The directory flag comes from the row we already
-    /// have, so building the menu never has to go back to disk to ask what these things are —
-    /// which on this machine is a question that can hang.
-    /// </summary>
+    /// <summary>The directory flag comes from the row, so building the menu never goes back to disk, which can hang.</summary>
     public IReadOnlyList<ShellItem> SelectedShellItems() =>
         _selection.Select(r => new ShellItem(r.Entry.FullPath, r.Entry.IsDirectory)).ToArray();
 
-    public void Drop(IReadOnlyList<string> paths, bool move) => Run(() => _files.DropAsync(paths, move));
+    public void Drop(IReadOnlyList<string> paths, bool move, string? into = null) =>
+        Run(() => _files.DropAsync(paths, move, into));
 
-    /// <summary>
-    /// Nothing inside an archive can be written. Asked by every command that would create,
-    /// rename or delete, so they come up disabled rather than enabled and then apologising.
-    /// </summary>
+    /// <summary>Rows inside an archive have no real path: on the clipboard they fail wherever they are pasted.</summary>
+    public bool CanCopyOut => HasSelection && !Archive.Active;
+
+    /// <summary>What every create, rename and delete command asks, so they come up disabled.</summary>
     public bool CanWriteHere => !Archive.Active && CurrentPath.Length > 0 && _listing.Error is null;
 
-    /// <summary>Puts a message in the status bar. For failures the window itself detects.</summary>
     public void Report(string message) => Notice = message;
 
-    /// <summary>Called when the window closes: nothing may be left walking the disk afterwards.</summary>
     public void Shutdown()
     {
         _load?.Cancel();
         FolderSizes.Dispose();
         Places.Dispose();
 
-        // An image still attached after OAN exits is litter on the user's machine.
         Mounts.Dispose();
     }
 
-
-    /// <summary>
-    /// What OAN puts at the top of the system menu. Mount is here and not only on double-click
-    /// because the right-click menu is where people look for it, and on this machine the system's
-    /// own mount entry belongs to a handler that hangs.
-    /// </summary>
-    public IReadOnlyList<OwnMenuItem> OwnMenuItems()
-    {
-        var images = _selection.Where(r => MountsViewModel.IsImage(r.Entry.FullPath)).ToArray();
-        if (images.Length == 0) return [];
-
-        var mounted = images.All(r => Mounts.IsMounted(r.Entry.FullPath));
-        return [new OwnMenuItem(mounted ? EjectId : MountId, mounted ? "Eject" : "Mount")];
-    }
-
-    public void RunOwnMenuItem(int id)
-    {
-        var images = _selection
-            .Where(r => MountsViewModel.IsImage(r.Entry.FullPath))
-            .Select(r => r.Entry.FullPath)
-            .ToArray();
-
-        foreach (var image in images)
-        {
-            if (id == MountId) Run(() => Mounts.OpenAsync(image));
-            else if (id == EjectId) Mounts.UnmountCommand.Execute(image);
-        }
-    }
+    private bool SelectionHasArchive => CanWriteHere && _selection.Any(ArchiveOps.IsArchive);
 
     private string? Notice
     {
         get => _notice;
-        set { _notice = value; OnChanged(nameof(WarningText)); }
+        set { (_notice, _info) = (value, null); OnChanged(nameof(WarningText)); OnChanged(nameof(InfoText)); }
     }
 
     public bool HasSelection => _selection.Count > 0;
 
-    /// <summary>A setting that could not be written is said out loud. It still applies this run.</summary>
     private void Remember()
     {
         if (_settings.Save(Settings.DefaultPath) is { } error) Notice = $"Settings not saved: {error}";
     }
 
-    /// <summary>Up inside an archive walks out of its folders first, then out of the archive.</summary>
+    /// <summary>Inside an archive, up leaves its folders first, then the archive.</summary>
     private void GoUp()
     {
         if (!Archive.Active) { Go(History.Parent(CurrentPath)); return; }
@@ -475,9 +391,9 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         Run(() => LoadAsync(path));
     }
 
-    // Explicit, both of them: the window's own notice line and reload stay private, and the
-    // interface is how the operations reach them without opening either to everybody else.
     string? IFileOpsHost.Notice { set => Notice = value; }
+    string? IFileOpsHost.Info { set { _info = value; OnChanged(nameof(InfoText)); } }
+    public string? InfoText => _info;
 
     Task IFileOpsHost.ReloadAsync() => ReloadAsync();
 
@@ -500,9 +416,7 @@ public sealed class MainViewModel : Observable, IFileOpsHost
             var options = new ListOptions { ShowHidden = _showHidden };
             var listing = await DirectoryLister.ListAsync(path, options, cts.Token);
 
-            // The quick-access folders are read once: they are the profile's own folders, they do
-            // not come and go while the window is open, and rebuilding them would throw away every
-            // size measured so far.
+            // Quick access is read once: rebuilding it would throw away every size measured so far.
             var sidebar = await Task.Run(
                 () => (Free: Paths.FreeSpace(path), Quick: Places.NeedsQuick ? Oan.Core.FileSystem.Places.Quick() : null,
                        Drives: Oan.Core.FileSystem.Places.Drives()),
@@ -527,74 +441,20 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         }
     }
 
-
-    /// <summary>
-    /// A recursive search from the current folder, as opposed to the box's filter, which only
-    /// hides rows already loaded. Hits arrive while the walk is still going: a search that only
-    /// answers at the end is unusable on a large tree.
-    /// </summary>
-    private async Task SearchAsync()
-    {
-        if (Search.Build(_filter, CurrentPath, ShowHidden) is not { } query) return;
-
-        var run = Search.Begin();
-        Selection = [];
-        Rows = [];
-
-        var engine = new FileSearch(query.SearchesContent ? new ContentMatcher(query) : null);
-        var batch = new List<EntryViewModel>(BatchSize);
-        string? error = null;
-
-        try
+    /// <summary>A recursive search from here. Hits arrive while the walk is still going.</summary>
+    private Task SearchAsync() =>
+        _searches.RunAsync(_filter, CurrentPath, ShowHidden, Look.IconSize, () =>
         {
-            await foreach (var hit in engine.RunAsync(query, run.Token).ConfigureAwait(true))
-            {
-                batch.Add(Row(hit));
-                if (batch.Count >= BatchSize) Flush(batch, engine);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            error = ex.Message;
-        }
-        finally
-        {
-            if (Search.Finish(run, engine.Tally, error)) Flush(batch, engine);
-            run.Dispose();
-        }
-    }
+            Selection = [];
+            Rows = FoundRows();
+        });
 
-    private EntryViewModel Row(SearchHit hit) => new(
-        new FileEntry
-        {
-            Name = hit.Name,
-            FullPath = hit.FullPath,
-            Attributes = hit.Attributes,
-            Size = hit.Size,
-            Modified = hit.Modified,
-        },
-        Look.IconSize);
-
-    private void Flush(List<EntryViewModel> batch, FileSearch engine)
-    {
-        if (batch.Count > 0)
-        {
-            Rows = [.. Rows, .. batch];
-            batch.Clear();
-        }
-
-        Search.Progress(engine.Tally);
-    }
-
-    /// <summary>Leaves results mode and reloads the folder the search started from.</summary>
     private void EndSearch()
     {
         if (!Search.Active) return;
 
         Search.Leave();
+        _searches.Forget();
         Filter = "";
         Run(ReloadAsync);
     }
@@ -606,15 +466,11 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         OnChanged(nameof(ListMessage));
     }
 
-
-    /// <summary>
-    /// What opening a folder ends. Results belong to the folder the search started from, and the
-    /// typed filter is a question about the folder you were in — carried over, the next one reads
-    /// as empty with nothing on screen to explain why.
-    /// </summary>
+    /// <summary>Opening a folder ends the search and clears the typed filter, or the new folder reads as empty for no visible reason.</summary>
     private void LeaveSearch()
     {
         Search.Leave();
+        _searches.Forget();
 
         if (_filter.Length == 0) return;
 
@@ -636,6 +492,7 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         Crumbs = Paths.Crumbs(path);
         Places.Track(CurrentPath);
         Rebuild();
+        FolderSizes.Deepen();
 
         OnChanged(nameof(CurrentPath));
         OnChanged(nameof(ParentPath));
@@ -646,24 +503,16 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     {
         var keep = _selection.Select(r => r.Entry.FullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        IEnumerable<FileEntry> source = _listing.Entries;
-        if (_kind != FileKind.All)
-            source = source.Where(e => FileKinds.Matches(e, _kind));
-        if (_filter.Length > 0)
-            source = source.Where(e => e.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+        var rows = Search.Active ? FoundRows() : ListingRows();
 
-        var rows = source.Select(e => new EntryViewModel(e, Look.IconSize)).ToArray();
-
-        // Before the sort, not after: it is what puts the known folder sizes back onto the fresh
-        // rows, and sorting by a column whose values have not been filled in yet sorts by nulls.
+        // Before the sort: this puts the known folder sizes back, and sorting without them sorts nulls.
         FolderSizes.Show(CurrentPath, rows);
         Array.Sort(rows, Sort.Compare);
 
         Selection = [];
         Rows = rows;
 
-        // Replacing the rows drops the list's selection; put back whatever survived, so a sort,
-        // a refresh or a finished operation does not make the user pick the same items again.
+        // Replacing the rows drops the selection; put back whatever survived.
         if (keep.Count > 0)
             Reselect?.Invoke(Array.FindAll(rows, r => keep.Contains(r.Entry.FullPath)));
 
@@ -673,17 +522,32 @@ public sealed class MainViewModel : Observable, IFileOpsHost
     }
 
     /// <summary>
-    /// The rows come from two different places, and the sort has to go to whichever is showing.
-    /// Rebuild reads the filesystem listing, which inside an archive is the folder the archive
-    /// file sits in — sorting through it replaced the archive's contents with that folder's.
+    /// The search results, not the listing: sort and filter must not replace them with the folder.
+    /// The rows are reused (rebuilding refetches every icon); the typed text is the query, so only the kind filter applies.
     /// </summary>
+    private EntryViewModel[] FoundRows() =>
+        _kind == FileKind.All
+            ? [.. _searches.Found]
+            : [.. _searches.Found.Where(r => FileKinds.Matches(r.Entry, _kind))];
+
+    private EntryViewModel[] ListingRows()
+    {
+        IEnumerable<FileEntry> source = _listing.Entries;
+        if (_kind != FileKind.All)
+            source = source.Where(e => FileKinds.Matches(e, _kind));
+        if (_filter.Length > 0)
+            source = source.Where(e => e.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+
+        return [.. source.Select(e => new EntryViewModel(e, Look.IconSize))];
+    }
+
+    /// <summary>Sorts whichever rows are showing: inside an archive the listing is the archive file's folder, not its contents.</summary>
     private void Reorder()
     {
         if (Archive.Active) ShowArchiveRows();
         else Rebuild();
     }
 
-    /// <summary>Both filters at once: two ways to be hiding things, one way to stop.</summary>
     private void ClearFilters()
     {
         _filter = "";
@@ -726,5 +590,4 @@ public sealed class MainViewModel : Observable, IFileOpsHost
         try { await work(); }
         catch (Exception ex) { Notice = ex.Message; }
     }
-
 }

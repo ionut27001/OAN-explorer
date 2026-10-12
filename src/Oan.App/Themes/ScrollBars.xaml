@@ -1,5 +1,4 @@
-<!-- The scroll bars, whole: the default ones are a wide grey channel with arrow buttons at each
-     end, which next to a file list reads as a second window border. -->
+<!-- The scroll bars, whole, replacing the default wide grey channel with arrow buttons. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 

@@ -4,39 +4,28 @@ using System.Windows.Media;
 
 namespace Oan.App.Controls;
 
-/// <summary>
-/// How a tile on the size map is painted: its colour, its cushion, and the two lines of text on
-/// it. Separate from the map, whose job is deciding which rectangle goes where — these answer
-/// what it looks like once it is there, and the two change for different reasons.
-/// </summary>
+/// <summary>How a tile on the size map is painted: colour, cushion and label.</summary>
 internal static class Cushions
 {
-    /// <summary>Under this a label would be clipped to nonsense, so none is drawn.</summary>
-    public const double LabelWide = 54;
-    public const double LabelTall = 30;
+    /// <summary>Under this even the smallest label would be clipped to nonsense.</summary>
+    public const double LabelWide = 34;
+    public const double LabelTall = 13;
 
     /// <summary>
-    /// A colour per file type. Every .vhdx the same magenta, every .dll the same blue — which is
-    /// what turns the picture into an answer: you see that one colour is most of the disk, then
-    /// read one of its labels to learn what it is.
-    ///
-    /// By type only works once the leaves are files. The flat map, where every tile is a folder,
-    /// has exactly one type in it and came out a single blue — there, position decides instead.
+    /// A colour per file type, saturated or cool throughout: muted warm neighbours read as one colour.
+    /// The last is the slot for a name with no extension.
     /// </summary>
     private static readonly Color[] Hues =
     [
-        Color.FromRgb(0x4C, 0xC2, 0xFF), Color.FromRgb(0x7A, 0xD1, 0x8A), Color.FromRgb(0xFF, 0xB4, 0x5C),
+        Color.FromRgb(0x4C, 0xC2, 0xFF), Color.FromRgb(0x7A, 0xD1, 0x8A), Color.FromRgb(0xF5, 0x82, 0x20),
         Color.FromRgb(0xE4, 0x7B, 0xB8), Color.FromRgb(0x9B, 0x8C, 0xFF), Color.FromRgb(0x5F, 0xD4, 0xC4),
-        Color.FromRgb(0xFF, 0x8A, 0x8A), Color.FromRgb(0xC9, 0xD1, 0x62), Color.FromRgb(0x6F, 0xA8, 0xFF),
-        Color.FromRgb(0xD9, 0x9A, 0x6C), Color.FromRgb(0xB8, 0xE0, 0x6A), Color.FromRgb(0xFF, 0xD1, 0x6A),
-        Color.FromRgb(0x8A, 0xC8, 0xE8), Color.FromRgb(0xCF, 0x92, 0xE8), Color.FromRgb(0x6A, 0xE0, 0xA8),
-        Color.FromRgb(0xE8, 0xA0, 0x7A),
+        Color.FromRgb(0xE8, 0x5D, 0x5D), Color.FromRgb(0xC9, 0xD1, 0x62), Color.FromRgb(0x6F, 0xA8, 0xFF),
+        Color.FromRgb(0xB8, 0xE0, 0x6A), Color.FromRgb(0xF5, 0xC5, 0x18), Color.FromRgb(0x8A, 0xC8, 0xE8),
+        Color.FromRgb(0xCF, 0x92, 0xE8), Color.FromRgb(0x6A, 0xE0, 0xA8), Color.FromRgb(0x5B, 0x7D, 0xB1),
+        Color.FromRgb(0xA0, 0xA8, 0xB8),
     ];
 
-    /// <summary>
-    /// Which colour a name gets. The extension, folded to a hue — the same extension always lands
-    /// on the same one, which is the whole point, and a name without one shares the last slot.
-    /// </summary>
+    /// <summary>The extension folded to a hue, so the same extension always gets the same colour.</summary>
     public static int HueOf(string name)
     {
         var dot = name.LastIndexOf(Dot);
@@ -50,20 +39,12 @@ internal static class Cushions
 
     private const char Dot = '.';
 
-    /// <summary>
-    /// One cushion per colour, not per tile. The gradient is in relative coordinates, so the same
-    /// frozen brush stretches to any rectangle it is given — ten brushes for the whole map, built
-    /// once, rather than an allocation per tile on every redraw.
-    /// </summary>
+    /// <summary>One frozen brush per colour: the gradient is in relative coordinates, so it fits any tile.</summary>
     private static readonly Brush[] Fills = Build(colour => new LinearGradientBrush(
         Mix(colour, Colors.White, 0.26), Mix(colour, Colors.Black, 0.30),
         new Point(0.1, 0), new Point(0.9, 1)));
 
-    /// <summary>
-    /// The line round a folder's children. A line drawn over them rather than a margin taken from
-    /// them: a margin per level adds up, and six levels deep the picture was more gap than tile.
-    /// Neutral, because colour now means file type and a coloured frame would claim a type.
-    /// </summary>
+    /// <summary>The line round a folder's children. Drawn over them: a margin per level adds up to more gap than tile.</summary>
     private static readonly Pen Frame =
         Frozen(new Pen(new SolidColorBrush(Color.FromArgb(0xC0, 0x18, 0x1C, 0x22)), 1));
 
@@ -72,11 +53,7 @@ internal static class Cushions
 
     private static readonly Brush Ink = Frozen(new SolidColorBrush(Color.FromRgb(0xE8, 0xE8, 0xE8)));
 
-    /// <summary>
-    /// A darker line along the bottom and right of each tile. With the cushion above it, that is
-    /// what a raised surface looks like, and it means the edges read without a border drawn round
-    /// every block — borders at this density eat the small tiles alive.
-    /// </summary>
+    /// <summary>A darker line along the bottom and right of each tile, instead of a border round every block.</summary>
     private static readonly Pen Edge = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(0x38, 0, 0, 0)), 1));
 
     public static int Count => Hues.Length;
@@ -84,14 +61,8 @@ internal static class Cushions
     public static Brush Fill(int hue) => Fills[hue % Fills.Length];
 
     /// <summary>
-    /// A folder: the line round its children, and its own name on a plate at the top when there
-    /// is room. The name is what the frame alone could not say, and it is what makes the picture
-    /// answer "what is all that" rather than only "how much".
-    /// </summary>
-    /// <summary>
-    /// How tall a folder's name band is, or zero when there is no room for one. The caller keeps
-    /// that much off the top before laying the children out — the plate is drawn over them, and
-    /// without the gap it covers the first one's own name.
+    /// How tall a folder's name band is, or zero when there is no room. The caller keeps that much
+    /// off the top before laying out the children, or the plate covers the first one's name.
     /// </summary>
     public static double Header(Rect rect) => rect.Width < 70 || rect.Height < 40 ? 0 : 16;
 
@@ -125,23 +96,33 @@ internal static class Cushions
         dc.DrawLine(Edge, new Point(right, rect.Y), new Point(right, bottom));
     }
 
-    /// <summary>
-    /// The name, and the size under it when there is room for both. Drawn dark rather than in the
-    /// theme's foreground: the fills are light in either theme, and a light-on-light label is the
-    /// same unreadable picture in a different way. Top left, which is also the cushion's lightest
-    /// corner, so the contrast holds by construction.
-    /// </summary>
+    /// <summary>The name, and the size under it when there is room. Dark ink: the fills are light in either theme.</summary>
     public static void Label(DrawingContext dc, string what, string much, Rect rect, double dpi)
     {
         if (rect.Width < LabelWide || rect.Height < LabelTall) return;
 
-        var name = Text(what, 12, dpi, rect.Width - 8, Brushes.Black);
-        var size = Text(much, 11, dpi, rect.Width - 8, Brushes.Black);
+        // The type size is chosen for the tile: the alternative to shrinking the name is no name.
+        var points = rect.Width >= 90 && rect.Height >= 30 ? 12 : rect.Width >= 60 ? 10 : 8;
+        var pad = points >= 12 ? 4.0 : 2;
 
+        var name = Text(what, points, dpi, rect.Width - pad * 2, Brushes.Black);
         dc.PushClip(new RectangleGeometry(rect));
-        dc.DrawText(name, new Point(rect.X + 4, rect.Y + 3));
-        if (rect.Height >= LabelTall + name.Height) dc.DrawText(size, new Point(rect.X + 4, rect.Y + 3 + name.Height));
+        dc.DrawText(name, new Point(rect.X + pad, rect.Y + pad - 1));
+
+        if (rect.Height >= name.Height * 2 + pad * 2)
+        {
+            var size = Text(much, Math.Max(8, points - 1), dpi, rect.Width - pad * 2, Brushes.Black);
+            dc.DrawText(size, new Point(rect.X + pad, rect.Y + pad - 1 + name.Height));
+        }
         dc.Pop();
+    }
+
+    /// <summary>A sentence in the middle of an empty map, where a tile would have been.</summary>
+    public static void Middle(DrawingContext dc, string text, Rect area, double dpi, Brush ink)
+    {
+        var label = Text(text, 13, dpi, area.Width, ink);
+        dc.DrawText(label, new Point(area.X + (area.Width - label.Width) / 2,
+                                     area.Y + (area.Height - label.Height) / 2));
     }
 
     private static FormattedText Text(string text, double size, double dpi, double room, Brush ink) =>

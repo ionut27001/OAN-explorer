@@ -4,17 +4,12 @@ namespace Oan.App.Platform;
 
 public enum FileKind { All, Folders, Documents, Images, Audio, Video, Archives, Code }
 
-/// <summary>
-/// The category the toolbar filters by. Extension-based, so it is a guess about content and
-/// nothing else in the app may depend on it: an extension we do not list belongs to no category
-/// and is only ever shown by <see cref="FileKind.All"/>.
-/// </summary>
+/// <summary>The category the toolbar filters by. Extension-based, so a guess: nothing else may depend on it.</summary>
 public static class FileKinds
 {
     private static readonly Dictionary<string, FileKind> ByExtension = Build();
 
-    /// <summary>A folder's extension is empty whatever its name ends in, so it falls out of
-    /// every category on its own and the only branch that can claim it is Folders.</summary>
+    /// <summary>A folder's extension counts as empty whatever its name ends in, so only Folders can claim it.</summary>
     public static bool Matches(FileEntry entry, FileKind kind) => kind switch
     {
         FileKind.All => true,

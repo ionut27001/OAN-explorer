@@ -5,14 +5,12 @@
              xmlns:ctl="clr-namespace:Oan.App.Controls"
              xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework">
 
-  <!-- No ChromeBar here. The caption band is the one place the backdrop is left alone: paint it
-       and the selected tab has nothing to stand out from, and the glass is gone from the one band
-       that is meant to have it. -->
+  <!-- No ChromeBar here: the caption band is where the backdrop is left alone, or the selected tab
+       has nothing to stand out from. -->
   <Border Padding="0,0,6,0" ClipToBounds="True" SizeChanged="OnStripResized">
     <StackPanel Orientation="Horizontal">
-      <!-- The rail only scrolls once the tabs are at their narrowest and still do not fit. Its
-           width is set in the code behind; inside a StackPanel it would otherwise be offered
-           infinite room, size itself to its contents and never scroll at all. -->
+      <!-- The rail only scrolls once the tabs are at their narrowest. Its width is set in the code behind;
+           inside a StackPanel it would be offered infinite room and never scroll. -->
       <ScrollViewer x:Name="Rail" HorizontalScrollBarVisibility="Hidden"
                     VerticalScrollBarVisibility="Disabled" PreviewMouseWheel="OnRailWheel">
         <!-- The 8px on each side is where the first and last flares go; without it the rail,
@@ -22,8 +20,7 @@
             <ItemsPanelTemplate><ctl:TabBar /></ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
 
-          <!-- The panel decides the widths, and it needs to know which tab is the selected one
-               without knowing what a tab is. This is how it is told. -->
+          <!-- How the panel is told which tab is the selected one. -->
           <ItemsControl.ItemContainerStyle>
             <Style TargetType="ContentPresenter">
               <Setter Property="ctl:TabBar.Chosen" Value="{Binding IsActive}" />
@@ -32,18 +29,14 @@
 
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <!-- Not a rounded box. The top corners curve in; the bottom two curve OUT, away from
-                   the tab and down into the bar, tangent to it - that is what makes the tab look
-                   like it rose out of the page. A Border only curves inwards, so those two corners
-                   are drawn as paths, and they hang OUTSIDE the chip so the tabs can sit side by
-                   side rather than being held apart by their own flares. -->
+              <!-- The top corners curve in; the bottom two curve OUT into the bar. A Border only curves inwards, so
+                   those are drawn as paths, hanging OUTSIDE the chip so the tabs can sit side by side. -->
               <Grid x:Name="Chip" Height="30" Margin="0,0,2,0" Background="Transparent"
                     shell:WindowChrome.IsHitTestVisibleInChrome="True"
                     MouseDown="OnTabMouseDown" MouseMove="OnTabMouseMove"
                     AllowDrop="True" Drop="OnTabDrop" ToolTip="{Binding Path}">
                 <Border x:Name="Hot" CornerRadius="8,8,0,0" Background="Transparent" />
-                <!-- Fill and flares fade as one shape, so switching tabs grows the new one out of
-                     the bar instead of snapping it there. -->
+                <!-- Fill and flares fade as one shape. -->
                 <Grid x:Name="Chosen" Opacity="0">
                   <Border CornerRadius="8,8,0,0" Background="{DynamicResource Surface}" />
                   <Path Width="8" Height="8" Margin="-8,0,0,0" Fill="{DynamicResource Surface}"
@@ -60,8 +53,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
-                  <!-- The folder's own icon, like Explorer's tabs. The glyph stands in until the
-                       shell answers, and for a tab that points nowhere yet. -->
+                  <!-- The glyph stands in until the shell answers, and for a tab that points nowhere yet. -->
                   <Grid x:Name="Icon" Width="16" Height="16">
                     <TextBlock x:Name="Fallback" Style="{StaticResource Glyph}" Text="&#xE8B7;"
                                FontSize="13" Foreground="{DynamicResource Accent}" Visibility="Collapsed" />
@@ -81,8 +73,7 @@
               </Grid>
 
               <DataTemplate.Triggers>
-                <!-- What is left of a tab once the strip is tight. The selected one is never
-                     narrowed this far, so it keeps its title and its close button throughout. -->
+                <!-- What is left of a tab once the strip is tight. The selected one is never narrowed this far. -->
                 <DataTrigger Value="NoClose"
                              Binding="{Binding (ctl:TabBar.Fit),
                                        RelativeSource={RelativeSource AncestorType=ContentPresenter}}">
@@ -106,8 +97,7 @@
                   <Setter TargetName="Icon" Property="Grid.ColumnSpan" Value="3" />
                 </DataTrigger>
 
-                <!-- The last tab cannot be closed, so it does not get a button that would do
-                     nothing. An X that is there and inert is the defect this project hunts. -->
+                <!-- The last tab cannot be closed, so it gets no button. -->
                 <DataTrigger Value="False"
                              Binding="{Binding DataContext.Tabs.CanClose,
                                        RelativeSource={RelativeSource AncestorType=UserControl}}">
@@ -142,8 +132,7 @@
         </ItemsControl>
       </ScrollViewer>
 
-      <!-- Pulled back over the last flare on purpose: the flare is the tail of the tab curving
-           into the bar, and the + belongs right after the tab, not after the curve. -->
+      <!-- Pulled back over the last flare on purpose: the + belongs right after the tab, not after the curve. -->
       <Button x:Name="Plus" Style="{StaticResource FlatButton}" Width="32" Height="30" Padding="0"
               Margin="-4,0,0,0" VerticalAlignment="Bottom" ToolTip="New tab (Ctrl+T)"
               shell:WindowChrome.IsHitTestVisibleInChrome="True"

@@ -12,7 +12,7 @@ public class SettingsTests
 
         var settings = Settings.Load(Path.Combine(temp.Root, "never-written.json"));
 
-        Assert.Equal(16, settings.IconSize);
+        Assert.Equal(0, settings.View);
         Assert.Equal(Backdrop.MicaAlt, settings.Backdrop);
     }
 
@@ -22,10 +22,10 @@ public class SettingsTests
         using var temp = new TempFolder();
         var path = Path.Combine(temp.Root, "settings.json");
 
-        Assert.Null(new Settings { IconSize = 256, Backdrop = Backdrop.Acrylic }.Save(path));
+        Assert.Null(new Settings { View = 256, Backdrop = Backdrop.Acrylic }.Save(path));
         var settings = Settings.Load(path);
 
-        Assert.Equal(256, settings.IconSize);
+        Assert.Equal(256, settings.View);
         Assert.Equal(Backdrop.Acrylic, settings.Backdrop);
     }
 
@@ -35,21 +35,21 @@ public class SettingsTests
         using var temp = new TempFolder();
         var path = Path.Combine(temp.Root, "OAN", "settings.json");
 
-        Assert.Null(new Settings { IconSize = 48 }.Save(path));
+        Assert.Null(new Settings { View = 48 }.Save(path));
 
         Assert.True(File.Exists(path));
-        Assert.Equal(48, Settings.Load(path).IconSize);
+        Assert.Equal(48, Settings.Load(path).View);
     }
 
     [Fact]
-    public void A_size_the_shell_has_no_image_list_for_falls_back_to_the_default()
+    public void A_view_that_is_not_one_of_the_six_falls_back_to_the_details_table()
     {
         using var temp = new TempFolder();
-        var path = temp.AddFile("settings.json", """{ "IconSize": 24, "Backdrop": "Solid" }""");
+        var path = temp.AddFile("settings.json", """{ "View": 24, "Backdrop": "Solid" }""");
 
         var settings = Settings.Load(path);
 
-        Assert.Equal(16, settings.IconSize);
+        Assert.Equal(0, settings.View);
         Assert.Equal(Backdrop.Solid, settings.Backdrop);
     }
 
@@ -57,12 +57,12 @@ public class SettingsTests
     public void A_backdrop_outside_the_enum_falls_back_to_the_default()
     {
         using var temp = new TempFolder();
-        var path = temp.AddFile("settings.json", """{ "IconSize": 32, "Backdrop": 9 }""");
+        var path = temp.AddFile("settings.json", """{ "View": 32, "Backdrop": 9 }""");
 
         var settings = Settings.Load(path);
 
         Assert.Equal(Backdrop.MicaAlt, settings.Backdrop);
-        Assert.Equal(32, settings.IconSize);
+        Assert.Equal(32, settings.View);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class SettingsTests
 
         var settings = Settings.Load(path);
 
-        Assert.Equal(16, settings.IconSize);
+        Assert.Equal(0, settings.View);
         Assert.Equal(Backdrop.MicaAlt, settings.Backdrop);
     }
 

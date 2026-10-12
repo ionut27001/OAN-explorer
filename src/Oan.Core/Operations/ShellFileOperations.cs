@@ -6,17 +6,10 @@ using Oan.Core.Interop;
 
 namespace Oan.Core.Operations;
 
-/// <summary>
-/// Runs copy, move, delete, rename and new-folder through the shell's IFileOperation — the same
-/// engine Explorer uses, so deletes land in the Recycle Bin, undo joins Explorer's Ctrl+Z stack,
-/// and the progress, conflict and in-use dialogs are the ones the user already knows.
-/// </summary>
+/// <summary>Runs file operations through the shell's IFileOperation: Recycle Bin, Explorer's undo stack and its own dialogs.</summary>
 public sealed class ShellFileOperations : IFileOperations
 {
-    /// <remarks>
-    /// <paramref name="ct"/> is honoured only before the operation starts. IFileOperation offers no
-    /// external cancel, so once the shell owns the work the user cancels at its own progress dialog.
-    /// </remarks>
+    /// <remarks><paramref name="ct"/> is honoured only before the operation starts; IFileOperation offers no external cancel.</remarks>
     public Task<OperationResult> RunAsync(OperationRequest request, nint owner, CancellationToken ct = default)
     {
         var refusal = Validate(request);
@@ -26,8 +19,7 @@ public sealed class ShellFileOperations : IFileOperations
         var completion = new TaskCompletionSource<OperationResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // PerformOperations blocks and puts up windows, so it needs an STA thread of its own.
-        // Nothing may escape it: an unhandled exception here would kill the process and leave the
-        // caller awaiting a task that is never completed.
+        // Nothing may escape it: an unhandled exception here would kill the process.
         var thread = new Thread(() =>
         {
             try { completion.TrySetResult(Execute(request, owner)); }
@@ -87,10 +79,7 @@ public sealed class ShellFileOperations : IFileOperations
         return null;
     }
 
-    /// <summary>
-    /// A name the file system cannot store has to be refused here: NewItem strips the offending
-    /// characters and reports success, so "Notes: Q4" would quietly become a folder called " Q4".
-    /// </summary>
+    /// <summary>Refused here because NewItem strips invalid characters and reports success: "Notes: Q4" would become " Q4".</summary>
     internal static string? CheckName(string name)
     {
         if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
@@ -114,11 +103,8 @@ public sealed class ShellFileOperations : IFileOperations
         "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
 
-    /// <summary>
-    /// PerformOperations returns S_OK when the user cancelled and when individual items failed,
-    /// so the HRESULT alone never means success: <paramref name="aborted"/> comes from
-    /// GetAnyOperationsAborted and <paramref name="failed"/> from the progress sink.
-    /// </summary>
+    /// <summary>PerformOperations returns S_OK when the user cancelled and when items failed, so <paramref name="aborted"/>
+    /// comes from GetAnyOperationsAborted and <paramref name="failed"/> from the progress sink.</summary>
     internal static OperationResult Compose(int hr, bool aborted, int succeeded, IReadOnlyList<FailedItem> failed)
     {
         if (hr is HResult.Cancelled or HResult.Abort)
@@ -215,22 +201,16 @@ public sealed class ShellFileOperations : IFileOperations
         {
             var flags = common | FileOperationFlags.AllowUndo;
 
-            // Copying into the folder the items already live in: without RenameOnCollision the
-            // shell finds the name taken, has nothing to ask, and returns success having done
-            // nothing at all — measured, no file and no message. Explorer answers this with
-            // "alpha - Copy.txt", and this is the flag that produces it. Only for Copy, and
-            // only same-folder: everywhere else the replace/skip dialog is the right answer,
-            // and silently renaming round a real conflict would hide it.
+            // Measured: copying into the items' own folder without RenameOnCollision returns success having done nothing.
+            // Only for same-folder Copy: elsewhere the replace/skip dialog is right.
             if (request.Kind == OperationKind.Copy && IsPasteIntoOwnFolder(request))
                 flags |= FileOperationFlags.RenameOnCollision;
 
             return flags;
         }
 
-        // A permanent delete deliberately leaves FOF_NOCONFIRMATION unset: the shell's own
-        // confirmation runs in another process and nothing here can spoof or suppress it.
-        // WantNukeWarning covers the other half — an item the Recycle Bin cannot take is
-        // warned about rather than silently destroyed.
+        // A permanent delete leaves FOF_NOCONFIRMATION unset so the shell's own confirmation runs.
+        // WantNukeWarning warns about an item the Recycle Bin cannot take.
         return request.Permanent
             ? common
             : common | FileOperationFlags.AllowUndo | FileOperationFlags.RecycleOnDelete | FileOperationFlags.WantNukeWarning;

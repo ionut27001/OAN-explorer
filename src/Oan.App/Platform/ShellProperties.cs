@@ -4,12 +4,8 @@ using System.Runtime.InteropServices;
 namespace Oan.App.Platform;
 
 /// <summary>
-/// The system property sheet, on a thread of its own.
-///
-/// The sheet loads whatever property-page handlers the file's type has registered — the same
-/// third-party code that hangs this machine's Explorer on an ISO. So it gets a dedicated STA
-/// thread and no owner window: a page that never returns costs the user that dialog and
-/// nothing else, and an unowned window cannot disable ours while it hangs.
+/// The system property sheet. It loads third-party property-page handlers, so it gets a dedicated STA thread
+/// and no owner window: a page that hangs costs that dialog only, and cannot disable ours.
 /// </summary>
 public static class ShellProperties
 {

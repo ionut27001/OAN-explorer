@@ -5,11 +5,7 @@ using Oan.Core.Shell;
 
 namespace Oan.App.ViewModels;
 
-/// <summary>
-/// What an operation needs to know about the window it is running in. An interface rather than a
-/// handful of delegates, because every member of it already exists on the window under this name
-/// — the window implements it by declaring that it does.
-/// </summary>
+/// <summary>What an operation needs to know about the window it is running in.</summary>
 public interface IFileOpsHost
 {
     string CurrentPath { get; }
@@ -23,21 +19,20 @@ public interface IFileOpsHost
     /// <summary>Asks for a name and returns it, or null if the window is not showing yet.</summary>
     Func<string, string, string?>? AskName { get; }
 
+    /// <summary>Asks for the password of the named archive; null when the user would rather not.</summary>
+    Func<string, string?>? AskPassword { get; }
+
     Action<IReadOnlyList<EntryViewModel>>? Reselect { get; }
     string? Notice { set; }
+
+    /// <summary>Something that went right. Setting <see cref="Notice"/> clears it.</summary>
+    string? Info { set; }
 
     Task ReloadAsync();
     void RefreshClipboardState();
 }
 
-/// <summary>
-/// Copy, cut, paste, rename, delete and create — everything that changes the disk.
-///
-/// Out of MainViewModel because it is a concern of its own, not because of its size: it is the
-/// only part of the window that can lose someone's files, and it reads better as one piece than
-/// interleaved with navigation and filtering. The window keeps the commands, so what the markup
-/// binds to is unchanged; only the bodies moved.
-/// </summary>
+/// <summary>Copy, cut, paste, rename, delete and create: everything that changes the disk.</summary>
 public sealed class FileOps(IFileOperations ops, IFileOpsHost host)
 {
     public void PutOnClipboard(bool cut)
@@ -47,6 +42,19 @@ public sealed class FileOps(IFileOperations ops, IFileOpsHost host)
 
         host.Notice = ClipboardFiles.Put(paths, cut) ? null : "The clipboard is in use by another program.";
         host.RefreshClipboardState();
+    }
+
+    /// <summary>Explorer's "Copy as path": quoted, one to a line, ready for a command line.</summary>
+    public void CopyPaths()
+    {
+        try
+        {
+            System.Windows.Clipboard.SetText(string.Join(Environment.NewLine, Selected().Select(p => $"\"{p}\"")));
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            host.Notice = "The clipboard is in use by another program.";
+        }
     }
 
     public Task PasteAsync()
@@ -97,7 +105,8 @@ public sealed class FileOps(IFileOperations ops, IFileOpsHost host)
         });
     }
 
-    public Task DropAsync(IReadOnlyList<string> paths, bool move)
+    /// <param name="into">The folder the drop was aimed at, or null for the folder on screen.</param>
+    public Task DropAsync(IReadOnlyList<string> paths, bool move, string? into = null)
     {
         if (!host.CanWriteHere)
         {
@@ -105,30 +114,30 @@ public sealed class FileOps(IFileOperations ops, IFileOpsHost host)
             return Task.CompletedTask;
         }
 
-        var incoming = paths
-            .Where(p => !string.Equals(Path.GetDirectoryName(p), host.CurrentPath, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        var destination = into ?? host.CurrentPath;
 
-        // A drag that ends where it began is a cancelled gesture, not a failure. This is the one
-        // no-op the window is allowed to pass over in silence: the user asked for nothing, and an
-        // orange warning for a slipped mouse reads as something having gone wrong.
+        // Compared against where it is going, not where we are standing: dropping a row onto a folder in the
+        // same listing is the commonest drag there is.
+        var incoming = paths.Where(p => !Same(p, destination) && !Same(Path.GetDirectoryName(p), destination)).ToArray();
+
+        // A drag that ends where it began is a cancelled gesture, and the one no-op passed over in silence.
         if (incoming.Length == 0) return Task.CompletedTask;
 
         return RunAsync(new OperationRequest
         {
             Kind = move ? OperationKind.Move : OperationKind.Copy,
             Sources = incoming,
-            Destination = host.CurrentPath,
+            Destination = destination,
         });
     }
+
+    private static bool Same(string? one, string? other) =>
+        string.Equals(one, other, StringComparison.OrdinalIgnoreCase);
 
     public Task NewAsync(NewItem item) =>
         item.Template is null ? NewFolderAsync() : NewFileAsync(item.Template);
 
-    /// <summary>
-    /// Explorer's flow: the file appears under the name its type advertises and the name is the
-    /// next thing you are asked for, rather than before there is anything to name.
-    /// </summary>
+    /// <summary>Explorer's flow: the file appears under its type's default name, then the name is asked for.</summary>
     private async Task NewFileAsync(NewFileTemplate template)
     {
         string path;

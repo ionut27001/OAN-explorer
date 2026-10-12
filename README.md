@@ -47,8 +47,17 @@ The one trap worth knowing: `IFileOperation.PerformOperations` returns `S_OK` wh
 cancels and when individual items fail. `GetAnyOperationsAborted()` and an
 `IFileOperationProgressSink` are what tell you which actually happened.
 
+## Archives
+
+Zip comes from the framework; 7z, rar, tar and the single-stream kinds from SharpCompress (MIT).
+When the user has 7-Zip installed, its `7z.dll` is loaded from there and takes 7z and rar —
+every method, solid blocks read once, split volumes, passwords — plus cab, wim, zst and the
+rest. OAN ships no 7-Zip of its own, so it carries no LGPL obligation; without one installed the
+managed readers carry on alone. Extraction never overwrites and never leaves its destination.
+Compression is zip only.
+
 ## Not in this version
 
-Instant folder sizes (WizTree-style), indexed search, archives, ISO mounting, FTP, multiple
+Instant folder sizes (WizTree-style), indexed search, FTP, multiple
 panes, user themes. The MFT index that makes instant sizes possible needs administrator rights
 — measured, there is no unelevated path — so it belongs in a separate elevated helper, later.

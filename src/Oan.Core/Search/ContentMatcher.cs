@@ -14,11 +14,8 @@ public interface IContentMatcher
     ContentResult Match(string path, long size, CancellationToken ct);
 }
 
-/// <summary>
-/// Looks for the query's content term in one file. A literal term is matched against the raw
-/// bytes, which is several times cheaper than decoding every file to UTF-16 first. Regex,
-/// UTF-16 files and case-insensitive non-ASCII terms take a decoded line-by-line pass instead.
-/// </summary>
+/// <summary>Looks for the query's content term in one file. A literal term is matched against the raw bytes;
+/// regex, UTF-16 files and case-insensitive non-ASCII terms take a decoded line-by-line pass.</summary>
 public sealed class ContentMatcher : IContentMatcher
 {
     const int ChunkSize = 64 * 1024;
@@ -61,11 +58,8 @@ public sealed class ContentMatcher : IContentMatcher
                 (byte)char.ToUpperInvariant((char)utf8Term[0])]);
     }
 
-    /// <summary>
-    /// Null when the content pattern can actually be run. SearchQuery.Invalid only parses the
-    /// pattern; the linear-time engine used here additionally rejects backreferences and
-    /// lookaround, and the user has to be told which construct is missing.
-    /// </summary>
+    /// <summary>Null when the content pattern can be run. The linear-time engine rejects backreferences and lookaround,
+    /// which SearchQuery.Invalid does not check.</summary>
     public static string? Unsupported(SearchQuery query)
     {
         if (!query.ContentIsRegex || string.IsNullOrEmpty(query.Content)) return null;
@@ -137,11 +131,8 @@ public sealed class ContentMatcher : IContentMatcher
         return n;
     }
 
-    /// <summary>
-    /// The file's encoding, or null when it looks binary — a null byte in the first 8 KB, the
-    /// heuristic git uses. Without a BOM the nulls are the only evidence: if they fall only on
-    /// odd offsets the file is guessed to be UTF-16LE text rather than binary, and likewise BE.
-    /// </summary>
+    /// <summary>The file's encoding, or null when it looks binary: a null byte in the first 8 KB, as git does.
+    /// Without a BOM, nulls only on odd (or only on even) offsets are guessed to be UTF-16 text.</summary>
     static Encoding? Sniff(ReadOnlySpan<byte> head, out int bom)
     {
         bom = 0;

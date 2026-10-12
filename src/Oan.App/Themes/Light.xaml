@@ -3,12 +3,11 @@
 
   <SolidColorBrush x:Key="WindowBg" Color="#F3F3F3" />
   <SolidColorBrush x:Key="Surface" Color="#FFFFFF" />
-  <!-- The selected tab at partial strength. Tab hover uses it rather than the generic Hover wash,
-       so a hovered tab can never read as brighter than the selected one, on any backdrop. -->
+  <!-- The selected tab at partial strength, so a hovered tab never reads as brighter than the selected one. -->
   <SolidColorBrush x:Key="SurfaceSoft" Color="#59FFFFFF" />
   <SolidColorBrush x:Key="Fg" Color="#1B1B1B" />
   <SolidColorBrush x:Key="FgMuted" Color="#5D5D5D" />
-  <SolidColorBrush x:Key="FgDim" Color="#9A9A9A" />
+  <SolidColorBrush x:Key="FgDim" Color="#707070" />
   <SolidColorBrush x:Key="Border" Color="#E2E2E2" />
   <SolidColorBrush x:Key="Accent" Color="#0067C0" />
   <SolidColorBrush x:Key="Warning" Color="#B03030" />
@@ -18,15 +17,16 @@
   <SolidColorBrush x:Key="SelectedFg" Color="#1B1B1B" />
   <SolidColorBrush x:Key="ScrollThumb" Color="#8A8A8A" />
   <SolidColorBrush x:Key="ScrollThumbHover" Color="#5D5D5D" />
-  <!-- The caption band, the one strip above the layer. It keeps most of the backdrop, but not all
-       of it: acrylic samples whatever window is behind, and over a white one the tab titles and the
-       window buttons were measured at 1.31:1. It is also what the selected tab stands out from, so
-       it stays a step darker than the layer. -->
+  <!-- The caption band. Not fully clear: over a white window behind acrylic, the tab titles measured
+       1.31:1. A step darker than the layer, so the selected tab stands out from it. -->
   <SolidColorBrush x:Key="Caption" Color="#66FFFFFF" />
 
 
   <!-- A shade off Surface: on a white sheet an all-white field is held together
        by its 1px outline alone, and that outline measures 1.30:1. -->
   <SolidColorBrush x:Key="FieldBg" Color="#F9F9F9" />
+
+  <!-- Menus: opaque whatever a theme does to Surface. See Dark.xaml. -->
+  <SolidColorBrush x:Key="MenuBg" Color="#F9F9F9" />
 
 </ResourceDictionary>

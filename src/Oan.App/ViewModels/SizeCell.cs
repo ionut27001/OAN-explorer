@@ -3,19 +3,12 @@ using Oan.Core.Model;
 
 namespace Oan.App.ViewModels;
 
-/// <summary>
-/// Unmeasured and Unknown are not the same fact and must not render the same: nothing has been
-/// asked yet, versus we walked the folder and could not read it.
-/// </summary>
+/// <summary>Unmeasured (nothing asked yet) and Unknown (walked, could not be read) must not render the same.</summary>
 public enum SizeState { Unmeasured, Measuring, Known, Unknown }
 
 /// <summary>
-/// One folder's measured size and how far the measurement got.
-///
-/// Shared by the sidebar and the list, so the "at least" wording lives in one place. That wording
-/// is the whole honesty of the feature: measured on this machine, ten of the profile's sixty-five
-/// folders cannot be read at all and four more can only be given a floor, so a size column that
-/// rendered those as numbers would be lying about a sixth of the rows.
+/// One folder's measured size and how far the measurement got. Shared by the sidebar and the list, so the
+/// "at least" wording lives in one place: measured here, 14 of the profile's 65 folders cannot be fully read.
 /// </summary>
 public sealed class SizeCell
 {
@@ -52,7 +45,6 @@ public sealed class SizeCell
         State = result.Bytes is null ? SizeState.Unknown : SizeState.Known;
     }
 
-    /// <summary>Back to knowing nothing — what switching the column off means.</summary>
     public void Forget()
     {
         _result = null;

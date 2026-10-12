@@ -6,9 +6,8 @@ using Oan.Core.Shell;
 namespace Oan.App.Platform;
 
 /// <summary>
-/// Shell icon lookups off the UI thread. For folders and executables SHGetFileInfo touches the
-/// disk, which is far too slow to do inside a binding while rows are being realized. One STA
-/// thread drains the queue in order and hands each frozen image back on the dispatcher.
+/// Shell icon lookups off the UI thread: for folders and executables SHGetFileInfo touches the disk.
+/// One STA thread drains the queue in order and hands each frozen image back on the dispatcher.
 /// </summary>
 internal static class IconLoader
 {

@@ -4,10 +4,7 @@ using Oan.Core.Mount;
 
 namespace Oan.App.ViewModels;
 
-/// <summary>
-/// One image OAN has attached. The letter is null until Windows gives the volume one, and shows
-/// as an em dash — never as a blank, which would read as a mount that quietly worked.
-/// </summary>
+/// <summary>One image OAN has attached. The letter is null until Windows gives the volume one.</summary>
 public sealed class MountViewModel(string isoPath, string? driveLetter)
 {
     public string IsoPath { get; } = isoPath;
@@ -26,15 +23,8 @@ public sealed class MountViewModel(string isoPath, string? driveLetter)
 }
 
 /// <summary>
-/// The images OAN has mounted, and the only way the window opens one.
-///
-/// Double-clicking an ISO in Explorer runs the default verb, which on this machine loads
-/// DAEMON Tools' shell extension and hangs for hours. Nothing here goes near a shell handler:
-/// the image is attached through the VirtDisk API and the drive it appears as is opened like
-/// any other folder.
-///
-/// Only images this object mounted are listed, because those are the only ones the Core will
-/// detach — offering Unmount on Bitdefender's virtual disk would be offering a refusal.
+/// The images OAN has mounted, attached through the VirtDisk API and never through a shell handler,
+/// which can hang. Only images this object mounted are listed: those are the only ones the Core will detach.
 /// </summary>
 public sealed class MountsViewModel : Observable, IDisposable
 {
@@ -48,8 +38,7 @@ public sealed class MountsViewModel : Observable, IDisposable
     private Action<string>? _report;
     private Func<string>? _here;
 
-    /// <summary>Paths with a mount in flight, on the window's own thread. The Core only learns a
-    /// path after the attach and the wait for a letter, which is up to five seconds later.</summary>
+    /// <summary>Paths with a mount in flight. The Core only learns a path after the attach, up to five seconds later.</summary>
     private readonly HashSet<string> _mounting = new(StringComparer.OrdinalIgnoreCase);
 
     private IReadOnlyList<MountViewModel> _images = [];
@@ -59,8 +48,7 @@ public sealed class MountsViewModel : Observable, IDisposable
 
     private MountsViewModel(IsoMount iso) : this(p => iso.MountAsync(p), p => iso.UnmountAsync(p)) => _owned = iso;
 
-    /// <summary>Mounting cannot be faked, so the two calls that touch virtdisk.dll are what the
-    /// tests replace — everything the window sees is on this side of them.</summary>
+    /// <summary>The two calls that touch virtdisk.dll are what the tests replace.</summary>
     internal MountsViewModel(Func<string, Task<MountResult>> mount, Func<string, Task<string?>> unmount)
     {
         _mount = mount;
@@ -70,8 +58,7 @@ public sealed class MountsViewModel : Observable, IDisposable
         UnmountCommand = new RelayCommand(p => Guarded(() => UnmountAsync((string)p!)), p => p is string);
     }
 
-    /// <summary>Where a mounted drive is opened, where a message is put, and where the list is
-    /// currently standing. Set by the view model that owns this.</summary>
+    /// <summary>Where a mounted drive is opened, where a message is put, and where the list is standing.</summary>
     public void Bind(Action<string> go, Action<string> report, Func<string> here) =>
         (_go, _report, _here) = (go, report, here);
 
@@ -93,15 +80,11 @@ public sealed class MountsViewModel : Observable, IDisposable
     /// <summary>The sidebar section exists only while something is mounted.</summary>
     public bool Any => _images.Count > 0;
 
-    /// <summary>Whether the context menu carries the item at all.</summary>
     public bool ShowMount => _selected is not null;
 
     public string MountHeader => _selected is not null && Find(_selected) is not null ? "Unmount" : "Mount";
 
-    /// <summary>
-    /// The image OAN attached at this drive root, or null. Lets the drive itself carry Eject, so
-    /// a mounted image is one row in the sidebar instead of two saying the same thing.
-    /// </summary>
+    /// <summary>The image OAN attached at this drive root, or null. Lets the drive's own row carry Eject.</summary>
     public MountViewModel? At(string driveRoot) =>
         _images.FirstOrDefault(i => i.Root.Length > 0 && Same(i.Root, driveRoot));
 
@@ -111,10 +94,7 @@ public sealed class MountsViewModel : Observable, IDisposable
     public static bool IsImage(string path) =>
         Extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// The list's selection. Mount is offered for exactly one image and nothing else: an item
-    /// that acts on one of five selected files is a guess about which one was meant.
-    /// </summary>
+    /// <summary>The list's selection. Mount is offered for exactly one image and nothing else.</summary>
     public void Selected(IReadOnlyList<string> paths)
     {
         _selected = paths.Count == 1 && IsImage(paths[0]) ? paths[0] : null;
@@ -130,13 +110,8 @@ public sealed class MountsViewModel : Observable, IDisposable
         : UnmountAsync(path);
 
     /// <summary>
-    /// Attaches the image if it is not ours already, then opens the drive it appeared as.
-    ///
-    /// An image we hold without a letter is asked for again rather than shown as it was: the
-    /// Core's answer for a mount it already has is a fresh reading, which is the only way a
-    /// letter that arrived after the five-second wait is ever picked up. Without it the row
-    /// reads "—" for the rest of the run, its open button stays dead, and the only way out of a
-    /// drive the user can see in Explorer is to eject it and mount it again.
+    /// Attaches the image if it is not ours already, then opens its drive. An image held without a letter is
+    /// asked for again: that is the only way a letter that arrived after the five-second wait is picked up.
     /// </summary>
     public async Task OpenAsync(string isoPath)
     {
@@ -146,9 +121,7 @@ public sealed class MountsViewModel : Observable, IDisposable
             return;
         }
 
-        // Two double-clicks inside the window above would both miss every guard there is, and
-        // virtdisk would attach the image a second time and take a second drive letter before
-        // the loser was undone.
+        // Two double-clicks would both pass every guard above, and virtdisk would attach the image twice.
         if (!_mounting.Add(isoPath)) return;
 
         var name = Path.GetFileName(isoPath);
@@ -191,20 +164,14 @@ public sealed class MountsViewModel : Observable, IDisposable
 
     public void Dispose() => _owned?.Dispose();
 
-    /// <summary>
-    /// The drive is the whole point, so we go there. A mount with no letter is still a mount and
-    /// is said out loud rather than left looking like nothing happened.
-    /// </summary>
+    /// <summary>Goes to the drive. A mount with no letter is still a mount, and is said out loud.</summary>
     private void Show(MountViewModel image)
     {
         if (image.HasLetter) _go?.Invoke(image.Root);
         else _report?.Invoke($"{image.Name} is mounted — Windows has not given it a drive letter.");
     }
 
-    /// <summary>
-    /// Standing inside a drive that has just been ejected leaves a listing of a volume that is no
-    /// longer there, so the folder the image came from is where we go instead.
-    /// </summary>
+    /// <summary>Standing inside a drive that was just ejected, go to the folder the image came from instead.</summary>
     private void Leave(MountViewModel image)
     {
         var here = _here?.Invoke() ?? "";
@@ -214,11 +181,7 @@ public sealed class MountsViewModel : Observable, IDisposable
             _report?.Invoke($"{image.Name} is unmounted.");
     }
 
-    /// <summary>
-    /// The window runs its own work through a guard that turns a throw into a notice; the menu
-    /// item reaches these directly. Two ways into one operation with two error contracts is how
-    /// a mount that threw becomes a status bar still saying "Mounting…" at the end of the day.
-    /// </summary>
+    /// <summary>The menu item reaches these commands directly, past the window's guard, so a throw becomes a notice here.</summary>
     private async void Guarded(Func<Task> work)
     {
         try

@@ -3,20 +3,19 @@ using System.IO;
 namespace Oan.App.Platform;
 
 /// <summary>
-/// Watches the folder on screen and says which of its children the disk touched.
-///
-/// Recursive, because a size changes when something deep inside changes, and the top level would
-/// never see that. Recursive also means a busy tree — AppData writes constantly — can produce
-/// more events than the buffer holds; that is not an error to report but a fact to handle, so an
-/// overflow is reported as "assume all of them" and the caller decides what that is worth.
-///
-/// Events are collected for a moment before being handed over: copying one file produces several,
-/// and re-measuring a folder per event would mean measuring it while it is still being written.
+/// Watches the folder on screen, recursively, and says which of its children the disk touched. A buffer
+/// overflow is reported as "assume all of them". Events are batched until the writing stops, with a ceiling:
+/// without one, a ten minute copy reported nothing until it ended.
 /// </summary>
 internal sealed class FolderChanges : IDisposable
 {
     private readonly Action<IReadOnlyCollection<string>?> _changed;
     private readonly TimeSpan _settle;
+
+    /// <summary>The longest a batch may keep pushing its own deadline back.</summary>
+    private readonly TimeSpan _ceiling;
+
+
     private readonly HashSet<string> _pending = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _gate = new();
     private readonly Timer _timer;
@@ -24,12 +23,16 @@ internal sealed class FolderChanges : IDisposable
     private string _root = "";
     private bool _everything;
 
+    /// <summary>Ticks at the first event of a batch, zero when nothing is pending.</summary>
+    private long _since;
+
     /// <param name="changed">The children that changed, or null for "assume all of them".
     /// Raised on a timer thread.</param>
     public FolderChanges(Action<IReadOnlyCollection<string>?> changed, TimeSpan? settle = null)
     {
         _changed = changed;
         _settle = settle ?? TimeSpan.FromMilliseconds(750);
+        _ceiling = _settle * 5;
         _timer = new Timer(_ => Report(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -45,8 +48,7 @@ internal sealed class FolderChanges : IDisposable
             _watcher = new FileSystemWatcher(_root)
             {
                 IncludeSubdirectories = true,
-                // The largest the API allows. It does not stop an overflow on a tree like
-                // AppData, it makes one rarer, and an overflow is handled rather than lost.
+                // The largest the API allows. It makes an overflow on a busy tree rarer, not impossible.
                 InternalBufferSize = 64 * 1024,
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.Size,
             };
@@ -60,8 +62,7 @@ internal sealed class FolderChanges : IDisposable
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            // A folder that cannot be watched is not a folder that cannot be shown. Sizes there
-            // simply go stale until the cache lets them go.
+            // A folder that cannot be watched can still be shown; its sizes go stale.
             Stop();
         }
     }
@@ -82,6 +83,7 @@ internal sealed class FolderChanges : IDisposable
         {
             _pending.Clear();
             _everything = false;
+            _since = 0;
         }
     }
 
@@ -89,14 +91,32 @@ internal sealed class FolderChanges : IDisposable
     {
         if (Child(e.FullPath) is not { } child) return;
 
-        lock (_gate) _pending.Add(child);
-        _timer.Change(_settle, Timeout.InfiniteTimeSpan);
+        lock (_gate)
+        {
+            _pending.Add(child);
+            Arm();
+        }
     }
 
     private void OnError(object sender, ErrorEventArgs e)
     {
-        lock (_gate) _everything = true;
-        _timer.Change(_settle, Timeout.InfiniteTimeSpan);
+        lock (_gate)
+        {
+            _everything = true;
+            Arm();
+        }
+    }
+
+    /// <summary>Waits for the writing to stop, but never past the ceiling. Called under the gate.</summary>
+    private void Arm()
+    {
+        var now = Environment.TickCount64;
+        if (_since == 0) _since = now;
+
+        var left = _ceiling - TimeSpan.FromMilliseconds(now - _since);
+        if (left < TimeSpan.Zero) left = TimeSpan.Zero;
+
+        _timer.Change(left < _settle ? left : _settle, Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>
@@ -124,6 +144,7 @@ internal sealed class FolderChanges : IDisposable
             children = [.. _pending];
             _pending.Clear();
             _everything = false;
+            _since = 0;
         }
 
         if (everything) _changed(null);

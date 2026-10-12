@@ -13,24 +13,21 @@ internal readonly record struct SourceEntry(
     DateTime? Modified,
     bool Encrypted,
     bool IsLink,
-    Func<Stream> Open);
+    Func<Stream>? Open);
 
-/// <summary>
-/// Opens an archive and hands its entries over in one vocabulary, whichever reader produced them.
-///
-/// Zip goes through System.IO.Compression: it is in the box, it seeks, and since .NET 10 it
-/// reports the encryption flag. 7z, rar and tar go to SharpCompress, which has a table of
-/// contents for each. A .gz, .bz2 or .xz has no table of contents — measured, its reader walks
-/// straight into the tar inside and lists that, which is what those files actually are.
-/// </summary>
+/// <summary>Opens an archive and hands its entries over in one vocabulary. Zip goes through System.IO.Compression; 7z, rar and tar
+/// through SharpCompress; a .gz, .bz2 or .xz lists the tar inside. An installed 7-Zip DLL takes 7z, rar and unknown formats.</summary>
 internal static class ArchiveSource
 {
-    /// <summary>
-    /// <paramref name="use"/> must finish with the entries before it returns: the compressed
-    /// kinds are read forward only, and the stream closes behind it.
-    /// </summary>
-    public static T Open<T>(string path, ArchiveKind kind, Func<IEnumerable<SourceEntry>, T> use)
+    /// <summary><paramref name="use"/> must finish with the entries before it returns: compressed kinds read forward only.</summary>
+    public static T Open<T>(string path, ArchiveKind kind, string? password, Func<IEnumerable<SourceEntry>, T> use)
     {
+        if (SevenZip(kind, password) is { } library)
+        {
+            using var archive = SevenZipArchive.Open(library, path, password);
+            return use(archive.Entries());
+        }
+
         switch (kind)
         {
             case ArchiveKind.Zip:
@@ -46,26 +43,42 @@ internal static class ArchiveSource
             }
             default:
             {
-                using var archive = ArchiveFactory.Open(path);
+                using var archive = ArchiveFactory.Open(path, new ReaderOptions { Password = password });
                 return use(From(archive, kind));
             }
         }
     }
 
-    /// <summary>
-    /// Everything a parser can throw at a file it did not like, minus the two that must travel.
-    /// The net is wide deliberately: every byte these readers see was chosen by whoever built
-    /// the archive, and a file manager that dies on a bad download is worse than one that says
-    /// it cannot read it.
-    /// </summary>
+    public static void Extract(string path, ArchiveKind kind, string? password, ArchiveExtraction run, CancellationToken ct)
+    {
+        if (SevenZip(kind, password) is { } library)
+        {
+            using var archive = SevenZipArchive.Open(library, path, password);
+            archive.Extract(run, ct);
+        }
+        else
+        {
+            Open(path, kind, password, source => { run.Pull(source, ct); return 0; });
+        }
+    }
+
+    /// <summary>The framework's zip reader cannot decrypt, so a zip goes to 7-Zip only with a password.
+    /// Tar and single-stream kinds stay managed: that reader walks through a .tar.gz in one step.</summary>
+    private static SevenZipLibrary? SevenZip(ArchiveKind kind, string? password) => kind switch
+    {
+        ArchiveKind.SevenZip or ArchiveKind.Rar or ArchiveKind.Other => SevenZipLibrary.Instance,
+        ArchiveKind.Zip when password is not null => SevenZipLibrary.Instance,
+        _ => null,
+    };
+
+    /// <summary>Everything a parser can throw, minus the two that must travel. Wide on purpose: every byte was chosen by the archive's author.</summary>
     public static bool Recoverable(Exception e) => e is not (OperationCanceledException or OutOfMemoryException);
 
     private static IEnumerable<SourceEntry> From(ZipArchive zip)
     {
         foreach (var entry in zip.Entries)
         {
-            // Name is empty exactly for the "folder/" entries, which is how the BCL itself
-            // tells them apart.
+            // Name is empty exactly for the "folder/" entries.
             var directory = entry.Name.Length == 0;
 
             yield return new SourceEntry(
@@ -99,12 +112,8 @@ internal static class ArchiveSource
             !string.IsNullOrEmpty(entry.LinkTarget),
             open);
 
-    /// <summary>
-    /// SharpCompress reports a size it was not given as zero, so zero means two different things
-    /// and the format decides which. Every format records the size of a member, and an empty
-    /// member really is zero bytes — but 7z may leave it out, and none of them record a
-    /// per-entry compressed size once the entries share one block. Unknown is null.
-    /// </summary>
+    /// <summary>SharpCompress reports a size it was not given as zero. 7z may omit a member's size, and no format records
+    /// a per-entry compressed size inside a shared block; unknown is null.</summary>
     private static long? Recorded(long value, bool mayOmit) => value > 0 ? value : mayOmit ? null : value;
 
     /// <summary>The high half of a zip's external attributes is the unix mode; 0xA000 is a symlink.</summary>

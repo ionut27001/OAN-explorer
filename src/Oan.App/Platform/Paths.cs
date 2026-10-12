@@ -2,26 +2,16 @@ using System.IO;
 
 namespace Oan.App.Platform;
 
-/// <summary>
-/// Path questions with no view model in them. Moved out of MainViewModel because none of them
-/// touch its state, and a window's model that also owns the path rules is how that class grew.
-/// </summary>
 /// <summary>One step of the address bar: what to show, and where clicking it goes.</summary>
 public sealed record Crumb(string Name, string Path);
 
 internal static class Paths
 {
-    /// <summary>
-    /// The folder to show in order to reveal a path: itself if it is one, otherwise the folder
-    /// holding it. Null when there is nothing above it to show.
-    /// </summary>
+    /// <summary>The folder to show in order to reveal a path: itself if it is one, otherwise the folder holding it.</summary>
     public static string? Holding(string path) =>
         Directory.Exists(path) ? path : Path.GetDirectoryName(path);
 
-    /// <summary>
-    /// The address bar's trail, root first. The root shows as "C:\" rather than as its own name,
-    /// which for a drive is the empty string.
-    /// </summary>
+    /// <summary>The address bar's trail, root first. A drive's own name is empty, so the root shows as its path.</summary>
     public static IReadOnlyList<Crumb> Crumbs(string path)
     {
         var crumbs = new List<Crumb>();
@@ -33,11 +23,7 @@ internal static class Paths
         return crumbs;
     }
 
-    /// <summary>
-    /// The folder a typed address means, or null. Environment variables are expanded, so %TEMP%
-    /// works the way it does in Explorer's address bar, and surrounding quotes are dropped
-    /// because that is how a path arrives when it was copied from anywhere else.
-    /// </summary>
+    /// <summary>The folder a typed address means, or null. Expands %TEMP% and drops surrounding quotes, as Explorer does.</summary>
     public static string? Resolve(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;

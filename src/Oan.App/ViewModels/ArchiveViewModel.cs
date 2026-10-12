@@ -5,16 +5,8 @@ using Oan.Core.Model;
 namespace Oan.App.ViewModels;
 
 /// <summary>
-/// Looking inside an archive as if it were a folder.
-///
-/// The entries are read once when the archive is opened and then filtered by prefix as the user
-/// walks down: a solid 7z is a single compressed stream, so listing it again for every subfolder
-/// would decompress the whole thing again.
-///
-/// It is not a folder, and the window must not pretend it is. Nothing here can be renamed,
-/// deleted or written to, and <see cref="Writable"/> is what the commands ask before enabling
-/// themselves — a button that is lit and then says "not supported" is the defect this project
-/// exists to avoid.
+/// Looking inside an archive as if it were a folder. Entries are read once and filtered by prefix:
+/// a solid 7z is one compressed stream, and listing it per subfolder would decompress it all again.
 /// </summary>
 public sealed class ArchiveViewModel : Observable
 {
@@ -26,37 +18,47 @@ public sealed class ArchiveViewModel : Observable
 
     public bool Active => ArchivePath is not null;
 
-    /// <summary>Always false. Named rather than hard-coded at the call sites so the reason is one place.</summary>
-    public bool Writable => false;
+    /// <summary>The password that opened this archive, kept so its entries can be taken out.</summary>
+    public string? Password { get; private set; }
+
+    public Func<string, string?>? AskPassword { get; set; }
 
     /// <summary>What the address bar shows: the archive, then the path within it.</summary>
     public string DisplayPath => ArchivePath is null
         ? ""
         : _inside.Length == 0 ? ArchivePath : Path.Combine(ArchivePath, _inside);
 
-    /// <summary>
-    /// Reads the archive and steps into it. Returns why it could not, or null.
-    /// </summary>
+    /// <summary>Reads the archive and steps into it. Returns why it could not, or null.</summary>
     public async Task<string?> OpenAsync(string archivePath, CancellationToken ct = default)
     {
+        string? password = null;
         var listing = await ArchiveReader.ListAsync(archivePath, ct: ct);
+
+        // The names themselves are encrypted: asked for until one works or the user stops offering.
+        while (listing.NeedsPassword && AskPassword?.Invoke(Path.GetFileName(archivePath)) is { Length: > 0 } offered)
+        {
+            password = offered;
+            listing = await ArchiveReader.ListAsync(archivePath, password: password, ct: ct);
+        }
         if (listing.Error is { } error) return error;
 
         Enter(archivePath, listing);
+        Password = password;
         return null;
     }
 
-    /// <summary>
-    /// Takes one entry out to a temp folder so it can be opened. The copy is marked read-only:
-    /// nothing written to it goes back into the archive, and a user who is not told that loses
-    /// work believing otherwise.
-    /// </summary>
+    /// <summary>Takes one entry out to a temp folder so it can be opened. Read-only: nothing written to it goes back.</summary>
     public async Task<(string? File, string? Error)> CopyOutAsync(string insidePath, CancellationToken ct = default)
     {
         if (ArchivePath is null) return (null, "There is no archive open.");
 
         var temp = Path.Combine(Path.GetTempPath(), "OAN", Guid.NewGuid().ToString("N")[..8]);
-        var result = await ArchiveReader.ExtractAsync(ArchivePath, temp, [insidePath], ct: ct);
+        var result = await ArchiveReader.ExtractAsync(ArchivePath, temp, [insidePath], password: Password, ct: ct);
+        while (result.NeedsPassword && AskPassword?.Invoke(Path.GetFileName(ArchivePath)) is { Length: > 0 } offered)
+        {
+            Password = offered;
+            result = await ArchiveReader.ExtractAsync(ArchivePath, temp, [insidePath], password: Password, ct: ct);
+        }
 
         var file = Directory.Exists(temp)
             ? Directory.EnumerateFiles(temp, "*", SearchOption.AllDirectories).FirstOrDefault()
@@ -77,6 +79,25 @@ public sealed class ArchiveViewModel : Observable
             ? ""
             : fullPath[(ArchivePath.Length + 1)..].Replace(Path.DirectorySeparatorChar, '/');
 
+    /// <summary>The archive's own names for these rows and everything beneath them.</summary>
+    public IReadOnlyList<string> EntriesUnder(IEnumerable<string> insidePaths)
+    {
+        if (_listing is null) return [];
+
+        var picked = insidePaths.Select(p => p.Trim('/')).ToArray();
+        return
+        [
+            .. _listing.Entries
+                .Select(e => e.FullName)
+                .Where(name => picked.Any(p =>
+                {
+                    var plain = name.Replace('\\', '/').Trim('/');
+                    return plain.Equals(p, StringComparison.OrdinalIgnoreCase)
+                        || plain.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase);
+                })),
+        ];
+    }
+
     public void Enter(string archivePath, ArchiveListing listing)
     {
         ArchivePath = archivePath;
@@ -91,13 +112,13 @@ public sealed class ArchiveViewModel : Observable
         if (!Active) return;
 
         ArchivePath = null;
+        Password = null;
         _listing = null;
         _inside = "";
         OnChanged(nameof(Active));
         OnChanged(nameof(DisplayPath));
     }
 
-    /// <summary>Walks down into a folder inside the archive.</summary>
     public void Descend(string folderFullName)
     {
         _inside = folderFullName.Trim('/', '\\');
@@ -116,9 +137,8 @@ public sealed class ArchiveViewModel : Observable
     }
 
     /// <summary>
-    /// The entries directly under where we are standing. Folders the archive never names are
-    /// still shown: a zip is allowed to list only a/b/c.txt and no folder entries at all, and
-    /// a listing that showed nothing until the leaf would be empty for most archives.
+    /// The entries directly under where we are. Folders the archive never names are inferred:
+    /// a zip may list only a/b/c.txt.
     /// </summary>
     public IReadOnlyList<FileEntry> Rows()
     {

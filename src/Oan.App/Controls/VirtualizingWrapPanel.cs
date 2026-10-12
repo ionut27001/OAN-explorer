@@ -7,17 +7,10 @@ using System.Windows.Media;
 namespace Oan.App.Controls;
 
 /// <summary>
-/// A wrapping panel of uniform tiles that only realizes the ones on screen. WPF ships no such
-/// panel: WrapPanel does not virtualize and VirtualizingStackPanel does not wrap, so a folder of
-/// 50 000 items in icon view would otherwise build 50 000 containers before it drew anything.
+/// A wrapping panel of uniform tiles that only realizes the ones on screen; WPF ships none.
+/// IScrollInfo is required: left to the ScrollViewer, the panel is measured with infinite height and realizes
+/// every item. Offsets are pixels. Containers are released with Remove, so VirtualizationMode must stay Standard.
 /// </summary>
-/// <remarks>
-/// <para>IScrollInfo is not optional here. A panel that leaves scrolling to the ScrollViewer is
-/// measured with infinite height, and then every item is realized no matter what MeasureOverride
-/// does. The offsets below are pixels, not items.</para>
-/// <para>Containers are released with Remove, which is an error for a recycled container: the
-/// host must leave VirtualizationMode at Standard.</para>
-/// </remarks>
 public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
 {
     public static readonly DependencyProperty ItemWidthProperty = DependencyProperty.Register(
@@ -104,8 +97,7 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
                 RemoveInternalChildRange(args.Position.Index, args.ItemUICount);
                 break;
 
-            // A new listing: the generator has dropped its containers already, and the ones left
-            // here would be arranged against indexes that now mean different items.
+            // A new listing: the containers left here would be arranged against indexes that mean different items.
             case NotifyCollectionChangedAction.Reset:
                 RemoveInternalChildRange(0, InternalChildren.Count);
                 _offset = 0;

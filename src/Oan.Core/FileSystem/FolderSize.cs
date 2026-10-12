@@ -4,11 +4,7 @@ using System.IO.Enumeration;
 
 namespace Oan.Core.FileSystem;
 
-/// <summary>
-/// What one measurement found. <see cref="Bytes"/> is null when nothing could be read at all;
-/// 0 means "measured, and it is empty". A number with <see cref="Skipped"/> or
-/// <see cref="NotFollowed"/> above zero is a floor, not a total.
-/// </summary>
+/// <summary>What one measurement found. <see cref="Bytes"/> null means nothing could be read; 0 means measured and empty.</summary>
 public sealed record FolderSizeResult
 {
     public required string Path { get; init; }
@@ -22,8 +18,7 @@ public sealed record FolderSizeResult
 
     public DateTime MeasuredAt { get; init; } = DateTime.UtcNow;
 
-    /// <summary>How long the walk took. What it cost last time is the only honest basis for
-    /// deciding how often it may be repeated when the folder changes under us.</summary>
+    /// <summary>How long the walk took; the basis for deciding how often it may be repeated.</summary>
     public TimeSpan Took { get; init; }
 
     public bool IsFloor => Bytes is not null && (Skipped > 0 || NotFollowed > 0);
@@ -31,25 +26,12 @@ public sealed record FolderSizeResult
     public static FolderSizeResult Unknown(string path) => new() { Path = path, Bytes = null };
 }
 
-/// <summary>
-/// Adds up every file beneath a folder.
-///
-/// There is no shortcut without an index. WizTree is instant because it reads the NTFS $MFT as
-/// one sequential stream, which needs administrator; measured on this machine, every call that
-/// would yield bulk per-file data comes back access-denied, and the account has neither
-/// SeBackupPrivilege nor Backup Operators. See docs/folder-size-baseline.md.
-///
-/// So this walks, and the one thing that makes a walk faster was measured too: calling
-/// NtQueryDirectoryFile by hand is a wash, because FileSystemEnumerator already is that call, and
-/// buffer size moves nothing. Threads are the whole win — 3.2x on a source tree, 7.2x on the
-/// profile and on C:\Windows. It is still not cheap: C:\Users\oance is 1.1 million files and 58
-/// seconds of single-threaded walking. Cache the answer, never measure a whole profile unasked,
-/// and always pass a token you are willing to cancel.
-/// </summary>
+/// <summary>Adds up every file beneath a folder by walking it; reading the $MFT needs administrator (docs/folder-size-baseline.md).
+/// Measured: hand-rolled NtQueryDirectoryFile and buffer size change nothing, threads give 3.2x-7.2x.
+/// Still not cheap (1.1 million files, 58 s single-threaded): cache the answer and always pass a cancellable token.</summary>
 public sealed class FolderSize
 {
-    // More threads than cores still pays, because this waits on the disk rather than the CPU;
-    // past about the core count the curve flattens (16 threads 3.19x, 32 threads 3.23x).
+    // Disk-bound, so threads pay up to about the core count, then flatten (16 threads 3.19x, 32 threads 3.23x).
     private static readonly int Threads = Math.Clamp(Environment.ProcessorCount, 2, 16);
 
     private readonly Dictionary<string, (FolderSizeResult Result, long Ticket)> _cache = new(StringComparer.OrdinalIgnoreCase);
@@ -57,10 +39,8 @@ public sealed class FolderSize
     private readonly int _capacity;
     private long _ticket;
 
-    /// <param name="freshness">How long a measurement stays usable before the folder is walked
-    /// again. A file manager changes the disk under its own feet, so this is not forever.</param>
-    /// <param name="capacity">How many answers to keep. A sidebar has a dozen places; a listing
-    /// can have hundreds of folders, and a cache smaller than the listing re-walks on scroll.</param>
+    /// <param name="freshness">How long a measurement stays usable before the folder is walked again.</param>
+    /// <param name="capacity">How many answers to keep; smaller than a listing means re-walking on scroll.</param>
     public FolderSize(TimeSpan? freshness = null, int capacity = 64)
     {
         _freshness = freshness ?? TimeSpan.FromMinutes(1);
@@ -73,8 +53,7 @@ public sealed class FolderSize
     public Task<FolderSizeResult> MeasureDetailedAsync(string path, CancellationToken ct = default) =>
         Task.Run(() => Measure(path, ct), ct);
 
-    /// <summary>The already-known size of a folder, or null if it has not been measured lately.
-    /// Lets the UI paint a cached number without starting a walk.</summary>
+    /// <summary>The already-known size of a folder, or null if not measured lately. Never starts a walk.</summary>
     public FolderSizeResult? Cached(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
@@ -93,8 +72,7 @@ public sealed class FolderSize
         if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             return FolderSizeResult.Unknown(path);
 
-        // Before the walk, not only inside it: an empty folder never enters the loop, so a
-        // request cancelled before it started would otherwise come back as a confident 0.
+        // Checked before the walk too: an empty folder never enters the loop and would come back as a confident 0.
         ct.ThrowIfCancellationRequested();
 
         var key = Key(path);
@@ -131,8 +109,7 @@ public sealed class FolderSize
     {
         lock (_cache)
         {
-            // The ticket, rather than MeasuredAt, decides what to drop: two measurements can
-            // share a clock tick, and eviction must not then be a coin toss.
+            // The ticket, not MeasuredAt, decides eviction: two measurements can share a clock tick.
             _cache[result.Path] = (result, ++_ticket);
             if (_cache.Count <= _capacity) return;
             _cache.Remove(_cache.MinBy(e => e.Value.Ticket).Key);
@@ -141,12 +118,8 @@ public sealed class FolderSize
 
     private static string Key(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
-    /// <summary>
-    /// The folders still to read, and the running totals. Each thread takes a folder, reads that
-    /// one level, adds its files and hands its subfolders back. The count of folders handed out
-    /// but not finished is what says the walk is over — an empty queue does not, because a thread
-    /// still reading may be about to refill it.
-    /// </summary>
+    /// <summary>The folders still to read, and the running totals. The count of folders handed out but not finished ends the walk;
+    /// an empty queue does not, because a thread still reading may refill it.</summary>
     private sealed class Walk(string root, CancellationToken ct)
     {
         private readonly BlockingCollection<string> _todo = new(new ConcurrentBag<string>());
@@ -159,15 +132,14 @@ public sealed class FolderSize
         public int Skipped => _skipped;
         public int NotFollowed => _notFollowed;
 
-        /// <summary>The top folder itself never opened, so nothing at all is known about it.</summary>
+        /// <summary>The top folder itself never opened.</summary>
         public bool RootRefused { get; private set; }
 
         public void Run(int threads)
         {
             _todo.Add(root);
 
-            // Threads of their own, not the thread pool: these sit blocked on the disk, and
-            // sixteen pool threads doing that would starve everything else the app runs on it.
+            // Own threads, not the pool: these sit blocked on the disk and would starve everything else.
             var workers = new Thread[threads];
             for (var i = 0; i < threads; i++)
             {
@@ -188,12 +160,12 @@ public sealed class FolderSize
 
         private void Work()
         {
+            BackgroundMode.Enter();
             foreach (var folder in _todo.GetConsumingEnumerable())
             {
                 if (!ct.IsCancellationRequested) Read(folder);
 
-                // Last one out closes the queue, which is what lets every other thread's
-                // GetConsumingEnumerable return instead of blocking for work that never comes.
+                // Last one out closes the queue, so every other thread's GetConsumingEnumerable returns.
                 if (Interlocked.Decrement(ref _outstanding) == 0) _todo.CompleteAdding();
             }
         }
@@ -231,14 +203,8 @@ public sealed class FolderSize
         }
     }
 
-    /// <summary>
-    /// One level of one folder: its files' sizes, and the subfolders to come back for.
-    ///
-    /// Subclassed for the reason <see cref="DirectoryLister"/> gives: with IgnoreInaccessible the
-    /// runtime hides unreadable folders and a partial total looks like a complete one. With it
-    /// off, the two failures arrive down the same path and must be told apart — the top folder
-    /// never opening is fatal and has to be thrown, one unreadable branch is a skip.
-    /// </summary>
+    /// <summary>One level of one folder. IgnoreInaccessible is off so unreadable folders are counted, not hidden:
+    /// the top folder never opening is thrown, one unreadable branch is a skip.</summary>
     private sealed class Level : FileSystemEnumerator<(long Bytes, string? Folder)>
     {
         private bool _readAnEntry;
@@ -255,11 +221,7 @@ public sealed class FolderSize
         public int Skipped { get; private set; }
         public int NotFollowed { get; private set; }
 
-        /// <summary>
-        /// C:\Users\All Users is a junction to ProgramData on every Windows install, and a
-        /// junction may point at its own parent. Following them double-counts at best and never
-        /// terminates at worst.
-        /// </summary>
+        /// <summary>Reparse folders are not followed: a junction may point at its own parent (C:\Users\All Users).</summary>
         protected override bool ShouldIncludeEntry(ref FileSystemEntry entry)
         {
             _readAnEntry = true;
@@ -273,11 +235,7 @@ public sealed class FolderSize
         protected override (long Bytes, string? Folder) TransformEntry(ref FileSystemEntry entry) =>
             entry.IsDirectory ? (0, entry.ToFullPath()) : (entry.Length, null);
 
-        /// <summary>
-        /// Nothing read yet means the folder itself never opened: thrown, so the caller can say
-        /// whether that is one unreadable branch or the whole measurement. Later errors are the
-        /// ordinary case of a subfolder that will not open, and those are a skip.
-        /// </summary>
+        /// <summary>Nothing read yet means the folder itself never opened, which is thrown; later errors are skips.</summary>
         protected override bool ContinueOnError(int error)
         {
             if (!_readAnEntry) return false;

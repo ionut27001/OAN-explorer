@@ -7,12 +7,8 @@ using Oan.Core.FileSystem;
 namespace Oan.App.Platform;
 
 /// <summary>
-/// Folder sizes measured one folder at a time, off the UI thread.
-///
-/// One at a time still, but not for the reason first written here: a single measurement is now
-/// threaded internally (see FolderSize), so it already uses the machine, and running two would
-/// only have them fight. Results arrive on the dispatcher at background priority, so a size
-/// landing cannot stutter a scroll.
+/// Folder sizes measured one folder at a time, off the UI thread: a measurement is threaded internally, and
+/// two would only fight. Results arrive on the dispatcher at background priority.
 /// </summary>
 internal sealed class SizeQueue : IDisposable
 {
@@ -22,10 +18,9 @@ internal sealed class SizeQueue : IDisposable
     private readonly Action<FolderSizeResult> _done;
     private readonly Func<string, bool>? _wanted;
 
-    /// <param name="wanted">Asked just before a queued folder is walked. A listing can be left
-    /// behind while its folders are still in the queue, and walking those costs the same as
-    /// walking the ones on screen. Called off the UI thread.</param>
-    /// <param name="capacity">How many answers to keep; a listing needs more than a sidebar.</param>
+    /// <param name="wanted">Asked, off the UI thread, just before a queued folder is walked, so a listing
+    /// left behind is skipped.</param>
+    /// <param name="capacity">How many answers to keep.</param>
     public SizeQueue(Action<FolderSizeResult> done, Func<string, bool>? wanted = null, int capacity = 64)
     {
         _done = done;

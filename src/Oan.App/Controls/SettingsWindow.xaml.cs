@@ -7,15 +7,8 @@ using Oan.App.ViewModels;
 namespace Oan.App.Controls;
 
 /// <summary>
-/// The settings that are not a gesture.
-///
-/// It deliberately does not hold everything: the view size, the sort order and the filters stay
-/// on the toolbar, because they are things you change while looking at a folder rather than
-/// things you set once. What is here is what you decide and forget — and it is the same view
-/// model the toolbar binds to, so the two can never disagree.
-///
-/// It wears the window's material as well, and follows it while it is open. A settings window
-/// that stayed flat grey behind glass would be the one place the setting it offers does not apply.
+/// The settings you decide and forget, on the same view model the toolbar binds to.
+/// Wears the window's material and follows it while open.
 /// </summary>
 public partial class SettingsWindow : Window
 {
@@ -33,16 +26,26 @@ public partial class SettingsWindow : Window
         Closed += (_, _) => _look.PropertyChanged -= OnLookChanged;
     }
 
+    /// <summary>Both ways in, the logo menu and Ctrl+comma, go through here, so there is never a second one.</summary>
+    public static void Open(Window? owner)
+    {
+        if (owner?.DataContext is not MainViewModel model) return;
+
+        new SettingsWindow(model, owner).ShowDialog();
+    }
+
     private void OnLookChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is null or nameof(AppearanceViewModel.Backdrop)) Dress();
+        if (e.PropertyName is null or nameof(AppearanceViewModel.Backdrop) or nameof(AppearanceViewModel.Glass)) Dress();
     }
 
     private void Dress()
     {
-        var applied = WindowEffects.TryBackdrop(this, _look.Backdrop);
+        // The same material as the window it belongs to, which under Glass is acrylic.
+        var material = _look.Glass ? Backdrop.Acrylic : _look.Backdrop;
+        var applied = WindowEffects.TryBackdrop(this, material);
 
-        if (applied && _look.Backdrop != Backdrop.Solid) Background = Brushes.Transparent;
+        if (applied && material != Backdrop.Solid) Background = Brushes.Transparent;
         else SetResourceReference(BackgroundProperty, "WindowBg");
 
         WindowEffects.UseDarkTitleBar(this, Theme.IsDark);

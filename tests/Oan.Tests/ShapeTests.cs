@@ -31,9 +31,9 @@ public class ShapeTests
         // SearchViewModel and it is 904 now. The ceiling follows it down each time, so the only
         // direction this file can go is smaller. Still holding navigation, selection, clipboard,
         // file operations, the sidebar and settings â€” clipboard is the next one out.
-        ("src/Oan.App/ViewModels/MainViewModel.cs", 730,
+        ("src/Oan.App/ViewModels/MainViewModel.cs", 600,
             "Several concerns still in one class; the ceiling ratchets down as they leave. " +
-            "Search, the sidebar, the toolbar, the path rules and now file operations have gone. " +
+            "Search, the sidebar, the toolbar, the path rules, file operations, the own menu and the status texts have gone. " +
             "Navigation, selection, the clipboard flag and settings are what is left."),
 
 

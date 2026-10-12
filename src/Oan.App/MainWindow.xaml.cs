@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,18 +17,26 @@ namespace Oan.App;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
+    private readonly AddressEdit _address;
     private readonly BandSelect _band;
     private Point _pressed;
     private bool _mayDrag;
+    private readonly ListDrag _drag;
 
     public MainWindow(MainViewModel vm)
     {
         _vm = vm;
         InitializeComponent();
+
+        // After InitializeComponent: before it the named controls are still null.
+        _address = new AddressEdit(vm, AddressBox, List);
         _band = new BandSelect(List);
+        _drag = new ListDrag(List, vm);
+        _ = new DetailsColumns((GridView)FindResource("DetailsView"), vm.Look.Columns);
 
         DataContext = vm;
         vm.AskName = (title, suggestion) => PromptWindow.Ask(this, title, suggestion);
+        vm.AskPassword = archive => PromptWindow.AskSecret(this, $"Password for {archive}");
         vm.Reselect = rows =>
         {
             foreach (var row in rows) List.SelectedItems.Add(row);
@@ -39,20 +48,14 @@ public partial class MainWindow : Window
         };
 
         ApplyViewMode();
-        Map.Opened += _vm.Open;
 
-        // The map draws sizes, and sizes land seconds after the rows do. Without this it is
-        // drawn once on arrival, while nothing has been measured, and never again.
+        // Sizes land seconds after the rows do; without this the map is drawn once, before any are measured.
         _vm.FolderSizes.Settled += Map.InvalidateVisual;
 
-        // A tile deeper than the listing is not one of its rows, so opening it means going to
-        // where it lives rather than acting on a selection that does not exist.
-        Map.OpenedPath += path =>
-        {
-            if (Paths.Holding(path) is { } folder) _ = _vm.NavigateAsync(folder);
-        };
         Map.Menu = List.ContextMenu;
-        Map.Picked += row => { List.SelectedItems.Clear(); List.SelectedItems.Add(row); };
+        Map.ChosenPath += path => _ = Reveal(path, menu: false);
+        Map.PickedPath += path => _ = Reveal(path, menu: true);
+        Map.OpenedPath += (path, folder) => _ = folder ? _vm.NavigateAsync(path) : Open(path);
         _vm.Look.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName != nameof(AppearanceViewModel.Treemap)) return;
@@ -62,6 +65,10 @@ public partial class MainWindow : Window
         };
         ApplyMapHeight();
 
+        _ = new ThemeStage(this, vm);
+        _ = new WindowGestures(this, vm, () => OnPropertiesClick(this, new RoutedEventArgs()));
+        _vm.PropertyChanged += WarmShellMenus;
+
         Loaded += (_, _) =>
         {
             vm.Start();
@@ -70,16 +77,35 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// A ListView refuses a GridView that is already in use, and a View that comes from a style is
-    /// re-applied every time one of its triggers re-evaluates — which the ListView reads as the
-    /// same view being handed to it twice. So this one property is set here instead.
+    /// A ListView refuses a GridView that is already in use, and a View set from a style is re-applied
+    /// whenever one of its triggers re-evaluates. So this one property is set here instead.
     /// </summary>
     private void ApplyViewMode() => List.View = _vm.Look.IsDetails ? (ViewBase)FindResource("DetailsView") : null;
 
-    /// <summary>
-    /// The panel opens to a third of the page and can be dragged from there. A star height would
-    /// fight the splitter, which writes a pixel height back into the row it moves.
-    /// </summary>
+    /// <summary>Selects in the list what was clicked on the map, so one menu, acting on the selection, serves both.</summary>
+    private async Task Reveal(string path, bool menu)
+    {
+        if (Paths.Holding(path) is not { } folder) return;
+        if (!string.Equals(folder, _vm.CurrentPath, StringComparison.OrdinalIgnoreCase))
+            await _vm.NavigateAsync(folder);
+
+        var row = _vm.Rows.FirstOrDefault(
+            r => string.Equals(r.Entry.FullPath, path, StringComparison.OrdinalIgnoreCase));
+
+        if (row is null) return;
+
+        List.SelectedItems.Clear();
+        List.SelectedItems.Add(row);
+        if (menu) Map.ShowMenu();
+    }
+
+    private async Task Open(string path)
+    {
+        await Reveal(path, menu: false);
+        if (_vm.HasSelection) _vm.OpenSelectionCommand.Execute(null);
+    }
+
+    /// <summary>A pixel height: a star height would fight the splitter, which writes pixels back into the row.</summary>
     private void ApplyMapHeight() =>
         MapRow.Height = _vm.Look.Treemap ? new GridLength(Math.Max(160, Body.ActualHeight / 3)) : new GridLength(0);
 
@@ -89,16 +115,17 @@ public partial class MainWindow : Window
         base.OnSourceInitialized(e);
 
         _vm.OwnerHandle = WindowEffects.Handle(this);
-        Theme.Follow(Application.Current, this);
-
         _vm.Look.Apply = ApplyBackdrop;
         _vm.Look.Supported = ApplyBackdrop(_vm.Look.Backdrop);
+
+        // After the backdrop: glass replaces it with acrylic, and must have the last word.
+        Theme.Choose(_vm.Look.ThemeName, _vm.Look.Glass);
+        Theme.Follow(Application.Current, this);
     }
 
     /// <summary>
-    /// A backdrop only shows through where WPF paints nothing, so the window stops painting a
-    /// background once one is in place — and starts again the moment Windows refuses, because a
-    /// transparent window with no backdrop behind it draws as untinted white.
+    /// A backdrop only shows where WPF paints nothing, so the background goes transparent, and comes back
+    /// when Windows refuses: a transparent window with no backdrop draws as untinted white.
     /// </summary>
     private bool ApplyBackdrop(Backdrop choice)
     {
@@ -114,12 +141,8 @@ public partial class MainWindow : Window
     private const double ListFloor = 320;
 
     /// <summary>
-    /// Keeps the sidebar from pushing the list out of the window.
-    ///
-    /// A MinWidth on both columns is not enough and is in fact the cause: when neither side can
-    /// yield, WPF satisfies both and lets the grid overflow, so the list ends up drawn past the
-    /// window edge. The list's floor is applied here instead, against the width the window
-    /// actually has, and it gives way when there is not enough room for it either.
+    /// Keeps the sidebar from pushing the list out of the window. A MinWidth on both columns is the cause:
+    /// when neither can yield, WPF satisfies both and lets the grid overflow. So the list's floor is applied here.
     /// </summary>
     private void ClampSidebar()
     {
@@ -148,22 +171,47 @@ public partial class MainWindow : Window
     {
         base.OnClosed(e);
         _vm.Shutdown();
+        ShellContextMenu.ReleaseHeld();
+    }
+
+    /// <summary>Once the first rows are on screen, the shell's menus are built once in the background, so the first
+    /// right-click finds their DLLs loaded and their surrogates running.</summary>
+    private void WarmShellMenus(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(MainViewModel.Rows) || _vm.Rows.Count == 0 || _vm.CurrentPath.Length == 0) return;
+
+        _vm.PropertyChanged -= WarmShellMenus;
+        var (folder, first) = (_vm.CurrentPath, _vm.Rows[0].Entry);
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+            () => ShellContextMenu.WarmUp(_vm.OwnerHandle, folder, new ShellItem(first.FullPath, first.IsDirectory)));
+    }
+
+    private void OnCloseMapClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel model) model.Look.Treemap = false;
     }
 
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
         var mods = e.KeyboardDevice.Modifiers;
 
-        // The address bar: Ctrl+L and Alt+D, both of which Explorer and every browser accept.
-        if ((e.Key == Key.L && mods == ModifierKeys.Control) ||
-            (e.Key == Key.D && mods == ModifierKeys.Alt))
+        // The address bar: Ctrl+L and Alt+D, which Explorer and every browser accept, and F4.
+        if ((e.Key == Key.L && mods == ModifierKeys.Control) || (e.Key == Key.F4 && mods == ModifierKeys.None) ||
+            (e.SystemKey == Key.D && mods == ModifierKeys.Alt))
         {
-            BeginAddressEdit();
+            _address.Begin();
             e.Handled = true;
             return;
         }
 
-        if ((e.Key == Key.F && mods == ModifierKeys.Control) || (e.Key == Key.F3 && mods == ModifierKeys.None))
+        if (e.Key == Key.OemComma && mods == ModifierKeys.Control)
+        {
+            SettingsWindow.Open(this);
+            e.Handled = true;
+            return;
+        }
+
+        if ((e.Key is Key.F or Key.E && mods == ModifierKeys.Control) || (e.Key == Key.F3 && mods == ModifierKeys.None))
         {
             SearchBox.Focus();
             SearchBox.SelectAll();
@@ -171,46 +219,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnAddressBarClick(object sender, MouseButtonEventArgs e) => BeginAddressEdit();
+    private void OnAddressBarClick(object sender, MouseButtonEventArgs e) => _address.Begin();
 
-    private void BeginAddressEdit()
-    {
-        _vm.EditingAddress = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
-        {
-            AddressBox.Focus();
-            AddressBox.SelectAll();
-        });
-    }
+    private void OnAddressKeyDown(object sender, KeyEventArgs e) => _address.Typed(e);
 
-    private void OnAddressKeyDown(object sender, KeyEventArgs e)
-    {
-        switch (e.Key)
-        {
-            case Key.Enter:
-                var typed = AddressBox.Text;
-                _vm.EditingAddress = false;
-                _vm.GoToCommand.Execute(typed);
-                List.Focus();
-                e.Handled = true;
-                break;
-
-            case Key.Escape:
-                CancelAddressEdit();
-                e.Handled = true;
-                break;
-        }
-    }
-
-    private void OnAddressLostFocus(object sender, KeyboardFocusChangedEventArgs e) => CancelAddressEdit();
-
-    private void CancelAddressEdit()
-    {
-        if (!_vm.EditingAddress) return;
-
-        _vm.EditingAddress = false;
-        _vm.Address = _vm.CurrentPath;
-    }
+    private void OnAddressLostFocus(object sender, KeyboardFocusChangedEventArgs e) => _address.Cancel();
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
         _vm.Selection = List.SelectedItems.Cast<EntryViewModel>().ToArray();
@@ -226,17 +239,15 @@ public partial class MainWindow : Window
             _vm.SortCommand.Execute(sort);
     }
 
-    /// <summary>
-    /// A toolbar button whose menu is its content. Right-click already opens it; this is the left.
-    /// The menu is hung from the button's right edge, because these buttons live at the right edge
-    /// of the window and a menu dropped from their left corner opens off the side of it.
-    /// </summary>
+    /// <summary>A toolbar button whose menu is its content. Right-click already opens it; this is the left.</summary>
     private void OnMenuButtonClick(object sender, RoutedEventArgs e) => MenuButton.Open(sender);
 
 
     /// <summary>Middle-click a folder to open it in a new tab, the way a browser opens a link.</summary>
     private void OnListMiddleDown(object sender, MouseButtonEventArgs e)
     {
+        // MouseDown carries every button; without this the mouse's "back" button opened a tab.
+        if (e.ChangedButton != MouseButton.Middle) return;
         if (RowAt(e.OriginalSource) is not { Entry.IsDirectory: true } row) return;
 
         _vm.Tabs.Open(row.Entry.FullPath);
@@ -245,17 +256,14 @@ public partial class MainWindow : Window
 
     private void OnListMouseDown(object sender, MouseButtonEventArgs e)
     {
-        // The headers and the scroll bars are inside the list, so a press on either tunnels
-        // through here first. Starting a rubber band there captures the mouse and marks the event
-        // handled, so the header never raises its own click — which is why sorting by clicking a
-        // column did nothing, and why dragging the scroll bar drew a selection box.
+        // Headers and scroll bars are inside the list: a rubber band started there captures the mouse and
+        // swallows the header's click and the scroll bar's drag.
         if (!BandArea.Starts(e.OriginalSource)) return;
 
         _pressed = e.GetPosition(this);
         _mayDrag = RowAt(e.OriginalSource) is not null;
 
-        // Empty space starts a selection rectangle; a row starts a drag. The two cannot both
-        // own the gesture, and pressing on a row is how you drag files out.
+        // Empty space starts a selection rectangle; a row starts a drag.
         if (!_mayDrag) _band.Begin(e);
     }
 
@@ -263,27 +271,36 @@ public partial class MainWindow : Window
 
     private void OnListRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // Empty space clears the selection, the way Explorer does, so the menu that opens is the
-        // folder's own — which is the only place New folder and Paste live.
-        if (RowAt(e.OriginalSource) is not { } row)
+        if (Ancestor.OnHeaders(e.OriginalSource)) return;
+
+        // Empty space clears the selection, as Explorer does, so the menu that opens is the folder's own.
+        if (RowAt(e.OriginalSource) is not { } row) List.SelectedItems.Clear();
+        else if (!List.SelectedItems.Contains(row))
         {
             List.SelectedItems.Clear();
+            List.SelectedItems.Add(row);
+        }
+
+        // The selection is settled and the menu opens at button up: building it from here overlaps the press.
+        if (_vm.CurrentPath.Length == 0) return;
+        if (_vm.HasSelection) ShellContextMenu.Prepare(_vm.OwnerHandle, _vm.SelectedShellItems(), _vm.OwnMenu.Items());
+        else ShellContextMenu.PrepareForFolder(_vm.OwnerHandle, _vm.CurrentPath, _vm.OwnMenu.Items());
+    }
+
+    /// <summary>Explorer's own menu, for a selection or for the folder; the app's menu when the shell has none.</summary>
+    private void OnListContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        // The column headers have their own menu, as in Explorer: the view, and which columns to show.
+        if (Ancestor.OnHeaders(e.OriginalSource))
+        {
+            e.Handled = true;
+            var menu = (ContextMenu)FindResource("HeaderMenu");
+            menu.DataContext = _vm;
+            menu.PlacementTarget = List;
+            menu.IsOpen = true;
             return;
         }
 
-        if (List.SelectedItems.Contains(row)) return;
-
-        List.SelectedItems.Clear();
-        List.SelectedItems.Add(row);
-    }
-
-    /// <summary>
-    /// Over a selection we hand off to Explorer's own menu, so shell extensions, Open With and
-    /// Properties are all there. On empty space there is nothing to hand off, so the app's own
-    /// menu shows instead.
-    /// </summary>
-    private void OnListContextMenuOpening(object sender, ContextMenuEventArgs e)
-    {
         if (_vm.CurrentPath.Length == 0) return;
 
         e.Handled = true;
@@ -291,22 +308,18 @@ public partial class MainWindow : Window
 
         try
         {
-            var own = _vm.OwnMenuItems();
+            var own = _vm.OwnMenu.Items();
 
-            // Empty space gets the folder's own menu — New, Paste, Properties — from the same
-            // system that draws the one for a selection. Two menus owned by two different
-            // painters look like two different programs, which is what this replaces.
-            var shell = _vm.SelectedPaths().Count == 0
+            var shell = !_vm.HasSelection
                 ? ShellContextMenu.ShowForFolder(_vm.OwnerHandle, _vm.CurrentPath,
                     (int)point.X, (int)point.Y, own)
                 : ShellContextMenu.Show(_vm.OwnerHandle, _vm.SelectedShellItems(),
                     (int)point.X, (int)point.Y, own);
 
-            if (shell.OwnCommand != 0) { _vm.RunOwnMenuItem(shell.OwnCommand); return; }
+            if (shell.OwnCommand != 0) { _vm.OwnMenu.Run(shell.OwnCommand); return; }
             if (shell.Ran) _vm.RefreshCommand.Execute(null);
 
-            // The shell had no menu for us, or the extension that owns these files never
-            // answered. Either way the app's own menu opens, and the notice names what stalled.
+            // The shell had no menu, or an extension never answered: the app's own menu opens.
             if (shell.Refusal is { } refusal)
             {
                 e.Handled = false;
@@ -315,17 +328,13 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            // Third-party shell extensions run inside that call. Whatever one of them throws,
-            // the app's own menu opens instead.
+            // Third-party shell extensions run inside that call and may throw anything.
             e.Handled = false;
             _vm.Report(ex.Message);
         }
     }
 
-    /// <summary>
-    /// The system property sheet. It is not run through the shell menu because that menu may
-    /// never have appeared — this item exists for exactly the case where it did not.
-    /// </summary>
+    /// <summary>Not run through the shell menu: this item exists for the case where that menu never appeared.</summary>
     private void OnPropertiesClick(object sender, RoutedEventArgs e)
     {
         var paths = _vm.SelectedPaths();
@@ -347,49 +356,14 @@ public partial class MainWindow : Window
             Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance) return;
 
         _mayDrag = false;
-        var paths = _vm.SelectedPaths();
-        if (paths.Count == 0) return;
-
-        var files = new StringCollection();
-        foreach (var path in paths) files.Add(path);
-
-        var data = new DataObject();
-        data.SetFileDropList(files);
-
-        var effect = DragDrop.DoDragDrop(List, data, DragDropEffects.Copy | DragDropEffects.Move);
-        if (effect == DragDropEffects.Move) _vm.RefreshCommand.Execute(null);
+        _drag.Out();
     }
 
-    private void OnListDragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = EffectFor(e);
-        e.Handled = true;
-    }
+    private void OnListDragOver(object sender, DragEventArgs e) => _drag.Over(e);
 
-    private void OnListDrop(object sender, DragEventArgs e)
-    {
-        var effect = EffectFor(e);
-        if (effect != DragDropEffects.None && e.Data.GetData(DataFormats.FileDrop) is string[] paths)
-            _vm.Drop(paths, move: effect == DragDropEffects.Move);
+    private void OnListDragLeave(object sender, DragEventArgs e) => _drag.Leave();
 
-        e.Effects = effect;
-        e.Handled = true;
-    }
+    private void OnListDrop(object sender, DragEventArgs e) => _drag.Drop(e);
 
-    /// <summary>
-    /// What this drop would actually do. Shift asks for a move, but a source that only offers a
-    /// copy — a zip folder, a download in progress — must never be told we moved its items.
-    /// </summary>
-    private DragDropEffects EffectFor(DragEventArgs e)
-    {
-        if (!e.Data.GetDataPresent(DataFormats.FileDrop) || !_vm.CanWriteHere) return DragDropEffects.None;
-
-        var wanted = (e.KeyStates & DragDropKeyStates.ShiftKey) != 0 ? DragDropEffects.Move : DragDropEffects.Copy;
-        if ((e.AllowedEffects & wanted) != 0) return wanted;
-
-        return (e.AllowedEffects & DragDropEffects.Copy) != 0 ? DragDropEffects.Copy : DragDropEffects.None;
-    }
-
-    private static EntryViewModel? RowAt(object? source) =>
-        Ancestor.Of<ListViewItem>(source)?.Content as EntryViewModel;
+    private static EntryViewModel? RowAt(object? source) => Ancestor.RowOf(source);
 }

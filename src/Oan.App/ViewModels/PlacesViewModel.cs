@@ -4,12 +4,7 @@ using Oan.Core.FileSystem;
 
 namespace Oan.App.ViewModels;
 
-/// <summary>
-/// The sidebar: the profile's folders, the machine's drives, and which of them the list is
-/// standing in. Split out of MainViewModel for the same reason as MountsViewModel and
-/// SearchViewModel — one concern, its own state, and the window's model was becoming the place
-/// everything lived.
-/// </summary>
+/// <summary>The sidebar: the profile's folders, the machine's drives, and which of them the list is standing in.</summary>
 public sealed class PlacesViewModel : Observable, IDisposable
 {
     private readonly SizeQueue _sizes;
@@ -39,9 +34,7 @@ public sealed class PlacesViewModel : Observable, IDisposable
     {
         Quick = [.. places.Select(p => new PlaceViewModel(p))];
 
-        // Everything but the profile itself. Measured on this machine it is 1.1 million files and
-        // 36 seconds, nearly all of it AppData, which is not a price for opening a window — so it
-        // stays blank until the user asks for it.
+        // Everything but the profile itself: measured here it is 1.1 million files and 36 seconds, so it waits to be asked.
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         foreach (var place in Quick.Where(p => p.Available && !Same(p.Path, home))) Measure(place);
     }
@@ -56,11 +49,13 @@ public sealed class PlacesViewModel : Observable, IDisposable
     public void ShowFree(long? bytes) =>
         FreeText = bytes is null ? "" : $"{Oan.Core.Model.Format.Size(bytes)} free";
 
-    /// <summary>Lights the entry the list is standing in, so the pane is not silent about where you are.</summary>
     public void Track(string currentPath)
     {
         foreach (var place in Quick) place.Track(currentPath);
-        foreach (var drive in Drives) drive.Track(currentPath);
+
+        // Two lit rows read as two selections. The drive speaks only when no pinned place can.
+        var pinned = Quick.Any(p => p.IsCurrent);
+        foreach (var drive in Drives) drive.Track(pinned ? null : currentPath);
     }
 
     public void MeasureAll()

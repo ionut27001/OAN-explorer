@@ -1,9 +1,9 @@
-using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Oan.App.ViewModels;
 using Oan.Core.Model;
 using Oan.Core.Sizes;
@@ -11,29 +11,17 @@ using Oan.Core.Sizes;
 namespace Oan.App.Controls;
 
 /// <summary>
-/// The folder as areas: every file and folder a rectangle, its area its share of the whole.
-///
-/// It draws whichever of two things it has. Given a <see cref="Tree"/> it draws the nested
-/// picture — folders holding their own contents, all the way down. Given only <see cref="Rows"/>
-/// it draws one level, from the sizes the Size column already measured. The second is instant and
-/// the first takes a walk, so the map shows the shallow picture while the deep one is on its way
-/// rather than showing nothing at all.
-///
-/// Drawn in a single OnRender rather than a visual per rectangle — measured at 100,000
-/// rectangles: 11.3 ms against 96.1 ms, and a third of the memory. Hit testing is a loop over the
-/// boxes, which is the only thing a visual per rectangle would have bought.
+/// The folder as areas. Draws the nested <see cref="Tree"/> when it has one, else one level from
+/// <see cref="Rows"/>. One drawing, not a visual per rectangle: at 100,000 rectangles, 11.3 ms against 96.1 ms.
 /// </summary>
 public sealed class TreemapView : FrameworkElement
 {
     /// <summary>Smaller than this cannot be seen or hit, so it is not drawn.</summary>
     private const double Least = 2;
 
-    /// <summary>
-    /// How deep the picture goes, and how much room each child needs for its level to be drawn at
-    /// all — about eight pixels square on average.
-    /// </summary>
+    /// <summary>How deep the picture goes, and the area each child needs on average for its level to be drawn.</summary>
     private const int MaxDepth = 8;
-    private const double Room = 64;
+    private const double Room = 100;
 
     public static readonly DependencyProperty TreeProperty = DependencyProperty.Register(
         nameof(Tree), typeof(SizeTree), typeof(TreemapView),
@@ -43,39 +31,52 @@ public sealed class TreemapView : FrameworkElement
         nameof(Rows), typeof(IEnumerable<EntryViewModel>), typeof(TreemapView),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, OnSourceChanged));
 
-    private readonly List<(EntryViewModel Row, Box Box)> _shallow = [];
-    private readonly List<(SizeTree Tree, int Index, Box Box)> _deep = [];
+    private readonly TreemapHits _hits = new();
     private EntryViewModel? _row;
     private int _tile = -1;
 
-    /// <summary>
-    /// The tiles, drawn once and kept. Hovering only has to change an outline, and re-running the
-    /// whole layout for that was what made the pointer drag: on a folder tree this is tens of
-    /// thousands of rectangles laid out and painted again for every mouse move.
-    /// </summary>
-    private DrawingGroup? _picture;
+    /// <summary>Two visuals: sharing one meant every mouse move re-submitted all the tiles to move one outline.</summary>
+    private readonly DrawingVisual _tiles = new();
+    private readonly DrawingVisual _hover = new();
+
     private Size _drawnAt;
     private double _dpi = 1;
+
+    /// <summary>While the panel is resized the picture is stretched; it is laid out again once the dragging stops.</summary>
+    private readonly DispatcherTimer _settled = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private bool _stretching;
 
     public TreemapView()
     {
         ClipToBounds = true;
         Focusable = true;
+
+        AddVisualChild(_tiles);
+        AddVisualChild(_hover);
+
+        _settled.Tick += (_, _) =>
+        {
+            _settled.Stop();
+            _stretching = false;
+            _tiles.Transform = null;
+            _drawnAt = default;
+            InvalidateVisual();
+        };
     }
 
-    /// <summary>A double click on one of this listing's own rows.</summary>
-    public event Action<EntryViewModel>? Opened;
+    protected override int VisualChildrenCount => 2;
 
-    /// <summary>A double click on a tile from deeper in the tree, which has no row here.</summary>
-    public event Action<string>? OpenedPath;
+    protected override Visual GetVisualChild(int index) => index == 0 ? _tiles : _hover;
 
-    /// <summary>A right click on one of this listing's own rows, before the menu opens.</summary>
-    public event Action<EntryViewModel>? Picked;
+    /// <summary>A tile was clicked.</summary>
+    public event Action<string>? ChosenPath;
 
-    /// <summary>
-    /// The menu a right click opens. The list's own, handed over rather than built again, so a
-    /// tile can never offer something its row does not or the other way round.
-    /// </summary>
+    /// <summary>A tile was double-clicked, with whether it is a folder.</summary>
+    public event Action<string, bool>? OpenedPath;
+
+    /// <summary>Right-clicked. The menu acts on the list's selection, so the listener selects the path, then opens it.</summary>
+    public event Action<string>? PickedPath;
+
     public ContextMenu? Menu { get; set; }
 
     public SizeTree? Tree
@@ -93,25 +94,19 @@ public sealed class TreemapView : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         var size = new Size(ActualWidth, ActualHeight);
-        if (_picture is null || _drawnAt != size) Paint(size);
-
-        if (_picture is not null) dc.DrawDrawing(_picture);
-        Outline(dc);
+        if (_drawnAt != size) Paint(size);
     }
 
-    /// <summary>How many times the tiles have been laid out. Read by the test that pins the
-    /// thing that made the pointer drag: hovering must not be one of the times.</summary>
+    /// <summary>How many times the tiles have been laid out. A test pins that hovering is not one of them.</summary>
     internal int Paints { get; private set; }
 
     private void Paint(Size size)
     {
         Paints++;
-        _shallow.Clear();
-        _deep.Clear();
+        _hits.Clear();
         _dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
-        var picture = new DrawingGroup();
-        using (var dc = picture.Open())
+        using (var dc = _tiles.RenderOpen())
         {
             dc.DrawRectangle(Brush("Surface"), null, new Rect(0, 0, size.Width, size.Height));
 
@@ -123,23 +118,53 @@ public sealed class TreemapView : FrameworkElement
             }
         }
 
-        picture.Freeze();
-        _picture = picture;
         _drawnAt = size;
+        DrawHover();
+    }
+
+    private void DrawHover()
+    {
+        using var dc = _hover.RenderOpen();
+
+        var box =
+            Tree is not null ? _hits.BoxOf(_tile) :
+            _row is null ? null :
+            _hits.BoxOf(_row);
+
+        if (box is not { W: > 0 } found) return;
+
+        var pen = new Pen(Brush("Fg"), 2);
+        pen.Freeze();
+        dc.DrawRectangle(null, pen, Rect(found));
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo info)
     {
-        _picture = null;
         base.OnRenderSizeChanged(info);
+
+        // Nothing drawn yet, so there is nothing to stretch.
+        if (_drawnAt.Width <= 0 || _drawnAt.Height <= 0)
+        {
+            _drawnAt = default;
+            InvalidateVisual();
+            return;
+        }
+
+        _stretching = true;
+        _tiles.Transform = new ScaleTransform(
+            ActualWidth / _drawnAt.Width, ActualHeight / _drawnAt.Height);
+
+        // The boxes belong to the old size, so nothing under the pointer is where it says.
+        _tile = -1;
+        _row = null;
+        ToolTip = null;
+        DrawHover();
+
+        _settled.Stop();
+        _settled.Start();
     }
 
-    /// <summary>
-    /// One folder's children inside the rectangle the folder was given, then the same again
-    /// inside each of theirs. The hue is decided at the top level and handed down, so everything
-    /// inside a folder shares its colour — that is what makes the picture read as groups rather
-    /// than as confetti.
-    /// </summary>
+    /// <summary>One folder's children inside the folder's rectangle, then the same inside each of theirs.</summary>
     private void Nested(DrawingContext dc, SizeTree tree, int folder, Box area, int hue, int depth)
     {
         var kids = tree.ChildrenOf(folder);
@@ -165,27 +190,21 @@ public sealed class TreemapView : FrameworkElement
 
             if (tree.IsFolder(index) && Worth(tree, index, box, depth))
             {
-                // The children fill the folder's whole rectangle, and the folder is a line and a
-                // name drawn over them afterwards. Giving each level a margin instead cost a pixel
-                // a side per level, and six levels down the picture was more gap than tile.
+                // The children fill the whole rectangle and the folder is drawn over them: a margin per level adds up.
                 Nested(dc, tree, index, Below(box, Cushions.Header(Rect(box))), hue, depth + 1);
                 Cushions.Group(dc, Rect(box), name, much, _dpi);
                 continue;
             }
 
-            _deep.Add((tree, index, box));
+            _hits.Add(tree, index, box);
             Tile(dc, box, Cushions.HueOf(name), name, much);
         }
     }
 
-    /// <summary>
-    /// Whether to draw a folder's contents or the folder itself. A folder holding thousands of
-    /// things inside a small rectangle would draw thousands of specks, which say nothing and cost
-    /// everything — so it is drawn as one tile, with its own name and total on it.
-    /// </summary>
+    /// <summary>Whether to draw a folder's contents, or the folder itself as one tile.</summary>
     private static bool Worth(SizeTree tree, int index, Box box, int depth)
     {
-        if (depth >= MaxDepth || box.W <= 12 || box.H <= 12) return false;
+        if (depth >= MaxDepth || box.W < 20 || box.H < 20) return false;
 
         var kids = tree.ChildrenOf(index).Length;
         return kids > 0 && box.W * box.H / kids >= Room;
@@ -193,8 +212,7 @@ public sealed class TreemapView : FrameworkElement
 
     private void Shallow(DrawingContext dc, Box area)
     {
-        // Descending, which the layout requires, and only what has a size: a folder nobody has
-        // measured has no area, and inventing one would be drawing a number we do not have.
+        // Descending, which the layout requires, and only what has been measured.
         var known = (Rows ?? [])
             .Where(r => r.SortSize is > 0)
             .OrderByDescending(r => r.SortSize!.Value)
@@ -202,7 +220,8 @@ public sealed class TreemapView : FrameworkElement
 
         if (known.Length == 0)
         {
-            Say(dc, "Nothing measured here yet.");
+            Cushions.Middle(dc, "Nothing measured here yet.",
+                new Rect(0, 0, ActualWidth, ActualHeight), _dpi, Brush("FgMuted"));
             return;
         }
 
@@ -216,7 +235,7 @@ public sealed class TreemapView : FrameworkElement
         {
             if (boxes[i].W < Least || boxes[i].H < Least) continue;
 
-            _shallow.Add((known[i], boxes[i]));
+            _hits.Add(known[i], boxes[i]);
             Tile(dc, boxes[i], i, known[i].Name, known[i].SizeText);
         }
     }
@@ -231,16 +250,18 @@ public sealed class TreemapView : FrameworkElement
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
+        if (_stretching) return;
+
         var at = e.GetPosition(this);
 
         if (Tree is not null)
         {
-            var tile = Deepest(at);
+            var tile = _hits.Deepest(at);
             if (tile == _tile) return;
 
             _tile = tile;
-            ToolTip = tile < 0 ? null : Told(tile);
-            InvalidateVisual();
+            ToolTip = tile < 0 ? null : _hits.Told(tile);
+            DrawHover();
             return;
         }
 
@@ -259,103 +280,57 @@ public sealed class TreemapView : FrameworkElement
         _row = null;
         _tile = -1;
         ToolTip = null;
-        InvalidateVisual();
+        DrawHover();
     }
 
     protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
     {
-        // Only this listing's own rows. A tile from deeper down is not in the list, and the menu
-        // acts on the list's selection — offering Delete there would delete the wrong thing.
-        if (RowAt(e.GetPosition(this)) is not { } row) return;
+        if (_stretching || At(e.GetPosition(this)) is not { } hit) return;
 
-        Picked?.Invoke(row);
+        PickedPath?.Invoke(hit.Path);
+        e.Handled = true;
+    }
+
+    /// <summary>Opens the shared menu where the pointer is. Called once the item is selected.</summary>
+    public void ShowMenu()
+    {
         if (Menu is null) return;
 
         Menu.PlacementTarget = this;
         Menu.Placement = PlacementMode.MousePoint;
         Menu.IsOpen = true;
-        e.Handled = true;
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         Focus();
-        if (e.ClickCount != 2) return;
+        if (_stretching || At(e.GetPosition(this)) is not { } hit) return;
 
-        var at = e.GetPosition(this);
+        if (e.ClickCount == 2) OpenedPath?.Invoke(hit.Path, hit.Folder);
+        else ChosenPath?.Invoke(hit.Path);
+    }
 
-        if (Tree is { } tree && Deepest(at) is var tile && tile >= 0)
-        {
-            OpenedPath?.Invoke(tree.PathOf(_deep[tile].Index));
-            return;
-        }
+    /// <summary>What a point names, against whichever of the two maps was drawn.</summary>
+    private (string Path, bool Folder)? At(Point at)
+    {
+        if (Tree is null)
+            return RowAt(at) is { } row ? (row.Entry.FullPath, row.Entry.IsDirectory) : null;
 
-        if (RowAt(at) is { } row) Opened?.Invoke(row);
+        var tile = _hits.Deepest(at);
+        return tile < 0 ? null : (_hits.PathOf(tile), _hits.IsFolder(tile));
     }
 
     /// <summary>The row whose tile holds this point, or null. Null for anything deeper.</summary>
-    public EntryViewModel? RowAt(Point at)
-    {
-        // Backwards: the layout places the largest first, so the smallest — the one actually
-        // under a pointer in a crowded corner — is the one to find.
-        for (var i = _shallow.Count - 1; i >= 0; i--)
-        {
-            if (_shallow[i].Box.Holds(at.X, at.Y)) return _shallow[i].Row;
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// The last tile drawn that holds this point. Last, because the deeper a tile is the later it
-    /// was drawn and the smaller it is — which is the one the pointer meant.
-    /// </summary>
-    private int Deepest(Point at)
-    {
-        for (var i = _deep.Count - 1; i >= 0; i--)
-        {
-            if (_deep[i].Box.Holds(at.X, at.Y)) return i;
-        }
-        return -1;
-    }
-
-    /// <summary>Name, size and where it is — the three things a rectangle cannot say itself.</summary>
-    private string Told(int tile)
-    {
-        var (tree, index, _) = _deep[tile];
-        return $"{tree.Name(index)}\n{Format.Size(tree.Size[index])}\n{tree.PathOf(index)}";
-    }
+    public EntryViewModel? RowAt(Point at) => _hits.RowAt(at);
 
     private static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not TreemapView view) return;
 
-        view._picture = null;
+        view._drawnAt = default;
         view._row = null;
         view._tile = -1;
         view.ToolTip = null;
-    }
-
-    /// <summary>The one the pointer is on gets an outline, drawn last so nothing covers it.</summary>
-    private void Outline(DrawingContext dc)
-    {
-        var box =
-            Tree is not null ? _tile >= 0 && _tile < _deep.Count ? _deep[_tile].Box : (Box?)null :
-            _row is null ? null :
-            _shallow.FirstOrDefault(p => ReferenceEquals(p.Row, _row)).Box;
-
-        if (box is not { W: > 0 } found) return;
-
-        var pen = new Pen(Brush("Fg"), 2);
-        pen.Freeze();
-        dc.DrawRectangle(null, pen, Rect(found));
-    }
-
-    private void Say(DrawingContext dc, string text)
-    {
-        var label = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            new Typeface("Segoe UI"), 13, Brush("FgMuted"), _dpi);
-
-        dc.DrawText(label, new Point((ActualWidth - label.Width) / 2, (ActualHeight - label.Height) / 2));
     }
 
     /// <summary>The box with the folder's name band taken off the top.</summary>

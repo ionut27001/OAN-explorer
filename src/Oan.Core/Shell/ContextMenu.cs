@@ -4,165 +4,191 @@ using Microsoft.Win32;
 
 namespace Oan.Core.Shell;
 
-/// <summary>
-/// What came of handing a right-click to the shell. <see cref="Ran"/> means a command was started
-/// and the listing should be refreshed. <see cref="Refusal"/> is the sentence to show when
-/// Explorer's menu never appeared, and the signal to open the app's own menu instead.
-/// <see cref="Failure"/> is the other way round: the menu was there, the user picked from it, and
-/// the verb itself said no — there is something to say, but nothing left to offer.
-/// </summary>
+/// <summary>Outcome of a shell menu. <see cref="Refusal"/>: Explorer's menu never appeared, open the app's own.
+/// <see cref="Failure"/>: the menu appeared and the chosen verb refused.</summary>
 public readonly record struct ShellMenuResult(bool Ran, string? Refusal, string? Failure = null, int OwnCommand = 0);
 
-/// <summary>
-/// An entry OAN puts at the top of the shell's menu, above everything the system offers.
-///
-/// Mount belongs here rather than in a menu of our own: the user right-clicks once and expects
-/// one list. Ids are ours and stay below <c>MenuBuilder.FirstCommand</c>, so what comes back says plainly
-/// whether the shell should run it or we should.
-/// </summary>
-public readonly record struct OwnMenuItem(int Id, string Label);
+/// <summary>An entry OAN puts at the top of the shell's menu. Ids stay below <c>MenuBuilder.FirstCommand</c>.
+/// One with <see cref="Items"/> opens a submenu; one with no label is a separator.</summary>
+public readonly record struct OwnMenuItem(int Id, string Label, bool Checked = false, bool Enabled = true,
+    IReadOnlyList<OwnMenuItem>? Items = null)
+{
+    public static OwnMenuItem Separator => new(0, "");
+}
 
-/// <summary>
-/// One item the menu is being shown for. Whether it is a folder comes from the listing the rows
-/// were built from and not from the disk: <c>Directory.Exists</c> on a dropped network share
-/// answers in SMB timeouts, and the question would be asked on the window's own thread — the one
-/// thread this class exists to keep free.
-/// </summary>
+/// <summary>One item the menu is shown for. IsDirectory comes from the listing: <c>Directory.Exists</c>
+/// on a dropped share blocks the UI thread for SMB timeouts.</summary>
 public readonly record struct ShellItem(string Path, bool IsDirectory);
 
-/// <summary>
-/// Explorer's own context menu, with every shell extension the user already has — on a deadline,
-/// because those extensions are loaded into our process and one of them can hang for hours.
-/// </summary>
+/// <summary>Explorer's context menu with the user's shell extensions, on a deadline: they load in-process and can hang.
+/// Called from the window's thread only.</summary>
 public static class ShellContextMenu
 {
 
-    /// <summary>
-    /// How long an extension gets. Not a performance budget — a menu slower than this is broken,
-    /// not busy — and the window is not answering while we wait, which is why it is not longer.
-    /// It is paid at most once per kind of file, because a timeout is remembered.
-    /// </summary>
-    private static readonly TimeSpan Deadline = TimeSpan.FromMilliseconds(1500);
+    /// <summary>How long an extension gets; the window does not answer meanwhile. Paid once per kind of file.</summary>
+    internal static readonly TimeSpan Deadline = TimeSpan.FromMilliseconds(1500);
 
-    /// <summary>
-    /// The same, for an extension drawing its own item while the menu is already open. The user is
-    /// hovering: anything this slow loses its picture rather than hold the menu still. It loses
-    /// only the picture — the thread is not given up on for missing this one, or a menu that was
-    /// merely slow to paint would be left on screen unable to run anything clicked on it.
-    /// </summary>
-    private static readonly TimeSpan DrawDeadline = TimeSpan.FromMilliseconds(250);
+    /// <summary>Deadline for owner-draw callbacks while the menu is open. Missing it loses the picture, never the thread.</summary>
+    internal static readonly TimeSpan DrawDeadline = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>
-    /// Kinds of file whose menu has hung once in this run; the next right-click on one goes
-    /// straight to the app's own menu instead of waiting again. Per run on purpose: an extension
-    /// is usually stuck because of the state the machine is in, and starting OAN again is the
-    /// natural moment to find out whether it still is.
-    /// </summary>
+    /// <summary>How long letting go of the held menus may hold up closing the window.</summary>
+    private static readonly TimeSpan CloseDeadline = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>A hang is remembered against a kind only for a selection this small: parsing costs ~1.5 ms a path, so a
+    /// thousand files run out of time on their number alone.</summary>
+    internal const int FewItems = 16;
+
+    /// <summary>Kinds of file whose menu hung once in this run; they go straight to the app's own menu.</summary>
     private static readonly ConcurrentDictionary<string, bool> Stuck = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Why OAN's own menu is opening instead of Explorer's. One sentence for all four
-    /// would accuse a program that answered in a millisecond of hanging.</summary>
-    internal enum Why { Hung, Empty, Lost, NoWindow }
+    /// <summary>The fewest items, more than <see cref="FewItems"/>, whose menu ran out of time in this run: a selection this
+    /// large goes straight to the app's own menu, whatever is in it.</summary>
+    private static int _tooMany = int.MaxValue;
 
-    /// <summary>
-    /// Shows the menu for <paramref name="items"/> at a screen point and runs the chosen command.
-    /// </summary>
+    /// <summary>Why OAN's own menu is opening instead of Explorer's.</summary>
+    internal enum Why { Hung, Empty, Lost, NoWindow, TooMany }
+
+    /// <summary>Shows the menu for <paramref name="items"/> at a screen point and runs the chosen command.</summary>
     public static ShellMenuResult Show(nint owner, IReadOnlyList<ShellItem> items, int screenX, int screenY,
         IReadOnlyList<OwnMenuItem>? own = null)
     {
-        // CMF_CANRENAME is a promise to carry out the rename ourselves, which needs a shell view
-        // to call back into. Without one the verb would be enabled and do nothing, so the flag
-        // stays off and the shell disables it. The app renames on F2.
-        // Shift is read here and not on the STA thread below: key state belongs to the input
-        // queue of the thread that asks, and over there it would come back empty.
-        var flags = Native.CMF_EXPLORE;
-        if ((Native.GetKeyState(Native.VK_SHIFT) & 0x8000) != 0) flags |= Native.CMF_EXTENDEDVERBS;
-
-        var paths = items.Select(item => item.Path).ToArray();
-        return Show(owner, items, screenX, screenY, () => MenuBuilder.Build(paths, flags, own), own);
+        var (key, build) = ForItems(items, own);
+        return Show(owner, items, screenX, screenY, build, background: false, key);
     }
 
-    /// <summary>
-    /// The menu Explorer shows on empty space in a folder: New, Paste, Properties, and whatever
-    /// extensions the user has. Same system as the menu for a selection, on purpose — two menus
-    /// drawn by two different owners look like two different programs, and the app's own is here
-    /// only for when the shell will not answer.
-    /// </summary>
+    /// <summary>The menu Explorer shows on empty space in a folder.</summary>
     public static ShellMenuResult ShowForFolder(nint owner, string folder, int screenX, int screenY,
         IReadOnlyList<OwnMenuItem>? own = null)
     {
-        var flags = Native.CMF_EXPLORE;
-        if ((Native.GetKeyState(Native.VK_SHIFT) & 0x8000) != 0) flags |= Native.CMF_EXTENDEDVERBS;
-
-        // Named as a folder rather than by extension: what can hang here is the folder's own view
-        // handler, and blaming ".iso" for it would silence the wrong thing next time.
-        var items = new[] { new ShellItem(folder, IsDirectory: true) };
-        return Show(owner, items, screenX, screenY, () => MenuBuilder.BuildForFolder(owner, folder, flags, own), own);
+        var (key, build) = ForFolder(owner, folder, own);
+        return Show(owner, AsFolder(folder), screenX, screenY, build, background: true, key);
     }
 
-    /// <summary>The same, with the part that loads third-party code handed in, so it can be faked.</summary>
+    /// <summary>Starts building the menu at right-button-down, so the build overlaps the press; the menu opens at button up,
+    /// and <see cref="Show"/> takes this build when it is for the same items. Skipped while the thread is busy.</summary>
+    public static void Prepare(nint owner, IReadOnlyList<ShellItem> items, IReadOnlyList<OwnMenuItem>? own = null)
+    {
+        var (key, build) = ForItems(items, own);
+        Prepare(owner, items, build, background: false, key);
+    }
+
+    /// <summary>The same for the menu on empty space in a folder.</summary>
+    public static void PrepareForFolder(nint owner, string folder, IReadOnlyList<OwnMenuItem>? own = null)
+    {
+        var (key, build) = ForFolder(owner, folder, own);
+        Prepare(owner, AsFolder(folder), build, background: true, key);
+    }
+
+    /// <summary>Once per run, after the first listing is on screen and before any menu: builds the folder's menu and the first
+    /// row's and holds them like real ones, so the first right-click finds the shell's DLLs loaded and the surrogates running.
+    /// Never waited for.</summary>
+    public static void WarmUp(nint owner, string folder, ShellItem first)
+    {
+        if (owner == 0) return;
+
+        MenuThread.WarmUp(() => MenuBuilder.BuildForFolder(owner, folder, Native.CMF_EXPLORE, null),
+            () => MenuBuilder.Build([first.Path], Native.CMF_EXPLORE));
+    }
+
+    /// <summary>Lets go of the held menus as the window closes, so the surrogates exit with OAN instead of waiting for COM
+    /// to notice it has gone.</summary>
+    public static void ReleaseHeld() => MenuThread.ReleaseHeld(CloseDeadline);
+
+    /// <summary>The same, with the part that loads third-party code handed in, so it can be faked. <paramref name="key"/> says
+    /// which menu this is, for a build prepared at button-down; <paramref name="background"/> which slot holds it afterwards.</summary>
     internal static ShellMenuResult Show(nint owner, IReadOnlyList<ShellItem> items, int screenX, int screenY,
-        Func<(Native.IContextMenu? Menu, nint Popup)> build, IReadOnlyList<OwnMenuItem>? own = null)
+        Func<(Native.IContextMenu? Menu, nint Popup)> build, bool background = false, string? key = null)
     {
         if (items.Count == 0) return default;
 
         var kinds = Kinds(items);
-        // Without a window there is nothing to hang a menu from — and this is the one way out of
-        // here that could otherwise leave the user with no menu at all and nothing said.
         if (owner == 0) return new(false, Refusal(kinds, Why.NoWindow));
         if (kinds.Any(Stuck.ContainsKey)) return new(false, Refusal(kinds));
+        if (items.Count >= _tooMany) return new(false, Refusal(kinds, Why.TooMany));
 
-        using var sta = new StaThread($"OAN shell menu {string.Join(' ', kinds)}");
-        Native.IContextMenu? menu = null;
-        nint popup = 0;
+        var (apartment, built, menu, popup) = MenuThread.Build(build, background, key);
+        var sta = apartment.Thread;
 
         try
         {
-            if (!sta.Run(() => (menu, popup) = build(), Deadline) || menu is null || popup == 0)
+            if (!built || menu is null || popup == 0)
             {
-                // Only a selection of one kind says anything about which handler hung. Blaming
-                // every kind in a mixed one would cost the user Explorer's menu on types that
-                // were never the problem.
-                if (sta.Lost && kinds.Count == 1) Stuck[kinds[0]] = true;
-                return new(false, Refusal(kinds, sta.Lost ? Why.Hung : Why.Empty));
+                if (!sta.Lost) return new(false, Refusal(kinds, Why.Empty));
+
+                // Only a few items of one kind say which handler hung; many may just be too many to parse in time.
+                if (items.Count > FewItems) _tooMany = Math.Min(_tooMany, items.Count);
+                else if (kinds.Count == 1) Stuck[kinds[0]] = true;
+
+                return new(false, Refusal(kinds, items.Count > FewItems ? Why.TooMany : Why.Hung));
             }
 
             var command = Track(owner, sta, menu, popup, screenX, screenY);
             // Nothing was picked: Escape, or a click beside the menu. Nothing to say about that.
             if (command <= 0) return default;
 
-            // One of ours. It never went near a shell extension, so a lost apartment does not
-            // apply to it.
+            // One of ours; no shell extension was involved.
             if (command < MenuBuilder.FirstCommand) return new(false, null, null, command);
 
-            // Something was picked, off a menu that was on screen and working, and the apartment
-            // it lived in is gone. Answering that with silence is the click that does nothing.
+            // The apartment died while the menu was up: say so rather than do nothing.
             if (sta.Lost) return new(false, Refusal(kinds, Why.Lost));
 
             return Chosen(sta, menu, owner, (uint)command - MenuBuilder.FirstCommand, screenX, screenY);
         }
         finally
         {
-            sta.Run(() => Release(menu, popup), Deadline);
+            // The HMENU goes and the IContextMenu is held; a lost thread keeps both.
+            sta.Run(() => apartment.Keep(background, menu, popup), Deadline);
         }
     }
 
-    /// <summary>The verb the user picked, and what to make of the answer it gave.</summary>
+    internal static void Prepare(nint owner, IReadOnlyList<ShellItem> items,
+        Func<(Native.IContextMenu? Menu, nint Popup)> build, bool background, string key)
+    {
+        if (owner != 0 && items.Count > 0 && items.Count < _tooMany && !Kinds(items).Any(Stuck.ContainsKey))
+            MenuThread.Prepare(build, background, key);
+    }
+
+    private static (string Key, Func<(Native.IContextMenu? Menu, nint Popup)> Build) ForItems(
+        IReadOnlyList<ShellItem> items, IReadOnlyList<OwnMenuItem>? own)
+    {
+        var flags = Flags();
+        var paths = items.Select(item => item.Path).ToArray();
+        return (Key(flags, own, paths), () => MenuBuilder.Build(paths, flags, own));
+    }
+
+    private static (string Key, Func<(Native.IContextMenu? Menu, nint Popup)> Build) ForFolder(
+        nint owner, string folder, IReadOnlyList<OwnMenuItem>? own)
+    {
+        var flags = Flags();
+        return (Key(flags, own, [folder]), () => MenuBuilder.BuildForFolder(owner, folder, flags, own));
+    }
+
+    /// <summary>Named as a folder, not by extension: what can hang here is the folder's view handler.</summary>
+    private static ShellItem[] AsFolder(string folder) => [new ShellItem(folder, IsDirectory: true)];
+
+    /// <summary>CMF_CANRENAME stays off: it promises we carry out the rename, which needs a shell view to call back into.
+    /// Shift is read here, not on the STA thread: key state belongs to the input queue of the asking thread.</summary>
+    private static uint Flags() =>
+        (Native.GetKeyState(Native.VK_SHIFT) & 0x8000) != 0 ? Native.CMF_EXPLORE | Native.CMF_EXTENDEDVERBS : Native.CMF_EXPLORE;
+
+    internal static string Key(uint flags, IReadOnlyList<OwnMenuItem>? own, IEnumerable<string> paths) =>
+        string.Join('\n', [flags.ToString(), .. Lines(own), .. paths]);
+
+    /// <summary>A submenu by what is in it: the record prints its list as a type name, and a moved tick would still match.</summary>
+    private static IEnumerable<string> Lines(IReadOnlyList<OwnMenuItem>? own) =>
+        (own ?? []).SelectMany(item => Lines(item.Items).Prepend((item with { Items = null }).ToString()));
+
     private static ShellMenuResult Chosen(StaThread sta, Native.IContextMenu menu, nint owner, uint offset,
         int screenX, int screenY)
     {
         var answer = 0;
         var replied = sta.Run(() => answer = Invoke(menu, owner, offset, screenX, screenY), Deadline);
 
-        // A verb that puts up a window of its own — Properties, a delete confirmation, an
-        // archiver — does not return until the user has dealt with it, which from here is
-        // indistinguishable from one that has hung. So the wait ends, the listing is
-        // refreshed anyway, and this is not remembered: the menu was never the problem.
+        // A verb that opens its own window (Properties, a confirmation) does not return until it closes,
+        // which looks like a hang from here. Refresh anyway and do not remember it as stuck.
         if (!replied || answer >= 0) return new(true, null);
 
-        // It answered, and the answer was no. When that is the user's own doing — a dialog they
-        // closed, an elevation they declined — saying so would be nagging. Anything else is a
-        // reason they have not been given, and a command that evaporates reads as a broken app.
+        // A cancel by the user is not worth a message; any other refusal is.
         return answer == Native.HRESULT_CANCELLED
             ? default
             : new(false, null, $"That command did not run — {Explain(answer)}");
@@ -175,7 +201,7 @@ public static class ShellContextMenu
         {
             return Native.TrackPopupMenuEx(
                 popup,
-                Native.TPM_LEFTALIGN | Native.TPM_RIGHTBUTTON | Native.TPM_RETURNCMD,
+                Native.TPM_LEFTALIGN | Native.TPM_RIGHTBUTTON | Native.TPM_RETURNCMD | Native.TPM_NOANIMATION,
                 screenX, screenY, owner, 0);
         }
     }
@@ -197,19 +223,19 @@ public static class ShellContextMenu
             ptInvoke = new Native.POINT { X = screenX, Y = screenY },
         };
 
-        return menu.InvokeCommand(invoke);
+        var answer = menu.InvokeCommand(invoke);
+
+        // Copy and Cut leave the clipboard to be rendered by this thread, which outlives the menu: rendered now, no paste waits
+        // on it and the copy survives OAN. A no-op when the clipboard is not this thread's.
+        Native.OleFlushClipboard();
+        return answer;
     }
 
-    /// <summary>A refusal in words: "Access is denied" is something the user can act on and
-    /// 0x80070005 is not. The number is kept for the ones the system has no sentence for.</summary>
     private static string Explain(int hresult) =>
         Marshal.GetExceptionForHR(hresult)?.Message ?? $"0x{hresult:X8}";
 
-    /// <summary>
-    /// The drawing callbacks, on the thread that owns the object. Null when no extension took the
-    /// message; otherwise the number USER32 gets back.
-    /// </summary>
-    private static nint? Draw(Native.IContextMenu menu, uint msg, nint wParam, nint lParam)
+    /// <summary>The drawing callbacks; null when no extension took the message.</summary>
+    internal static nint? Draw(Native.IContextMenu menu, uint msg, nint wParam, nint lParam)
     {
         if (menu is Native.IContextMenu3 three && three.HandleMenuMsg2(msg, wParam, lParam, out var result) >= 0)
             return result;
@@ -220,26 +246,54 @@ public static class ShellContextMenu
         return null;
     }
 
-    /// <summary>
-    /// Runs on the STA thread that created these, because that is the apartment they live in —
-    /// and not at all when that thread is one we gave up on.
-    /// </summary>
+    /// <summary>WM_MEASUREITEM and WM_DRAWITEM, on a copy of the struct: USER32 owns lParam only until the window answers,
+    /// and an extension past the deadline still writes into what it was given. Its HDC is stale by then too, but that is
+    /// a handle GDI checks, not memory.</summary>
+    internal static nint? DrawItem(StaThread sta, Native.IContextMenu menu, uint msg, nint wParam, nint lParam)
+    {
+        if (sta.Lost) return null;
+
+        var size = msg == Native.WM_DRAWITEM ? Marshal.SizeOf<Native.DRAWITEMSTRUCT>() : Marshal.SizeOf<Native.MEASUREITEMSTRUCT>();
+        var copy = Marshal.AllocHGlobal(size);
+        Copy(lParam, copy, size);
+
+        // Held by this call and by the job; the last to let go frees it. A job never posted, because collecting an earlier
+        // one lost the thread, never lets go: those bytes stay with the thread, like everything it built.
+        var holders = 2;
+        nint? handled = null;
+        var answered = sta.Run(() =>
+        {
+            try
+            {
+                handled = Draw(menu, msg, wParam, copy);
+            }
+            finally
+            {
+                LetGo();
+            }
+        }, DrawDeadline, abandon: false);
+
+        if (answered) Copy(copy, lParam, size);
+        LetGo();
+        return answered ? handled : null;
+
+        void LetGo()
+        {
+            if (Interlocked.Decrement(ref holders) == 0) Marshal.FreeHGlobal(copy);
+        }
+    }
+
+    private static unsafe void Copy(nint from, nint to, int size) => Buffer.MemoryCopy((void*)from, (void*)to, size, size);
+
+    /// <summary>Must run on the STA thread that created these.</summary>
     internal static void Release(Native.IContextMenu? menu, nint popup)
     {
         if (popup != 0) Native.DestroyMenu(popup);
         if (menu is not null) Marshal.ReleaseComObject(menu);
     }
 
-    /// <summary>
-    /// What a hang is remembered against: the extension, because that is what a handler registers
-    /// itself for. Folders and extensionless files each share one bucket — a handler that hangs on
-    /// one of those hangs on all of them. Doubles as the words for the message.
-    ///
-    /// A folder is a folder whatever its name looks like. Read off the string instead, "v1.2" and
-    /// ".git" land under ".2" and ".git" — kinds no handler is registered for, so the table would
-    /// never protect the case it was built for, while a real .iso file would lose Explorer's menu
-    /// because a folder called archive.iso once hung.
-    /// </summary>
+    /// <summary>What a hang is remembered against: the extension, with one bucket each for folders and extensionless files.
+    /// IsDirectory decides, not the name: folders called "v1.2" or "archive.iso" would otherwise poison real file kinds.</summary>
     internal static List<string> Kinds(IReadOnlyList<ShellItem> items) =>
         items
             .Select(item => item.IsDirectory ? "folders"
@@ -248,12 +302,7 @@ public static class ShellContextMenu
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    /// <summary>
-    /// What to tell the user. Naming the program that owns the type is the whole difference
-    /// between a message they can act on and "something is stuck" — but only when something is
-    /// stuck: a shell that answered at once with no menu to give has not hung, and a sentence
-    /// saying it has sends the user off to uninstall a program that did nothing wrong.
-    /// </summary>
+    /// <summary>The sentence shown to the user; only a real hang names the program that owns the type.</summary>
     internal static string Refusal(List<string> kinds, Why why = Why.Hung)
     {
         if (why == Why.NoWindow) return "There is no window to hang Explorer's menu on — showing OAN's own menu.";
@@ -265,17 +314,14 @@ public static class ShellContextMenu
         {
             Why.Empty => $"Windows has no menu of its own for {what} — showing OAN's own menu.",
             Why.Lost => $"The shell menu for {what} stopped answering before it could run that — showing OAN's own menu.",
+            Why.TooMany => "The shell menu for this many items takes too long — showing OAN's own menu.",
             _ => who is null
                 ? $"The shell menu for {what} is not answering — showing OAN's own menu."
                 : $"{who} is not answering for {what} — showing OAN's own menu.",
         };
     }
 
-    /// <summary>
-    /// Who the registry says handles this kind of file. Menu handlers are named under the
-    /// extension and under the type it points at; failing both, the type's own name still beats
-    /// nothing. Named keys only, never a wildcard — that one walks the whole hive.
-    /// </summary>
+    /// <summary>Who the registry says handles this kind of file. Named keys only, never the wildcard key.</summary>
     internal static string? Owner(string kind)
     {
         if (!kind.StartsWith('.')) return null;
@@ -290,16 +336,13 @@ public static class ShellContextMenu
         var named = handlers?.GetSubKeyNames().Where(name => !Guid.TryParse(name, out _)).ToArray();
         if (named is { Length: > 0 }) return string.Join(", ", named);
 
-        // The friendly name of the type, and when that is blank — which is how DAEMON Tools
-        // leaves it — the type's own id, which still names the program.
+        // The type's friendly name; when blank (DAEMON Tools leaves it so), the ProgID.
         using var described = type is null ? null : Registry.ClassesRoot.OpenSubKey(type);
         return described?.GetValue(null) is string { Length: > 0 } name ? name : type;
     }
 
-    /// <summary>
-    /// Hands the menu messages to the shell while the menu is up. Without this the submenus owned
-    /// by extensions — Send To, Open With, cloud providers — come back empty.
-    /// </summary>
+    /// <summary>Forwards menu messages to the shell while the menu is up; without it extension submenus
+    /// (Send To, Open With, cloud providers) come back empty.</summary>
     private sealed class MenuMessages : IDisposable
     {
         private readonly nint _window;
@@ -327,20 +370,20 @@ public static class ShellContextMenu
 
         private nint Forward(nint window, uint msg, nint wParam, nint lParam)
         {
-            // USER32 calls this from inside the menu's modal loop, across a native frame. An
-            // exception that escaped would not unwind to a managed handler — it would take the
-            // process down while the menu is open.
+            // Called by USER32 across a native frame: an escaping exception would take the process down.
             try
             {
+                // abandon: false — a late submenu must not cost the thread the menu object lives on. WM_INITMENUPOPUP
+                // fills a submenu rather than paints it, and gets the deadline a build does.
                 nint? handled = null;
+                if (msg == Native.WM_INITMENUPOPUP &&
+                    _sta.Run(() => handled = Draw(_menu, msg, wParam, lParam), Deadline, abandon: false) &&
+                    handled is not null)
+                    return 0;
 
-                // abandon: false — a picture that came too late costs that picture and no more.
-                // The menu's own object lives on this thread; giving it up over a slow drawing
-                // would leave a menu on screen that cannot run anything the user then clicks.
-                if ((msg is Native.WM_INITMENUPOPUP or Native.WM_DRAWITEM or Native.WM_MEASUREITEM) &&
-                    _sta.Run(() => handled = Draw(_menu, msg, wParam, lParam), DrawDeadline, abandon: false) &&
-                    handled is { } result)
-                    return msg == Native.WM_INITMENUPOPUP ? 0 : result;
+                if ((msg is Native.WM_DRAWITEM or Native.WM_MEASUREITEM) &&
+                    DrawItem(_sta, _menu, msg, wParam, lParam) is { } result)
+                    return result;
             }
             catch (Exception)
             {

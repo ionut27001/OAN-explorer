@@ -1,32 +1,19 @@
 namespace Oan.Core.Archives;
 
-/// <summary>
-/// Where an entry is allowed to land.
-///
-/// The name inside an archive is a request, not an address: someone chose it, and that someone
-/// is not the user. `..\..\Windows\System32\x.dll` is the oldest trick in the format and it
-/// still works against anything that concatenates the name onto a folder and opens the result.
-/// </summary>
+/// <summary>Where an entry is allowed to land. The name inside an archive is attacker-chosen (<c>..\..\Windows\System32\x.dll</c>).</summary>
 internal static class SafeEntryPath
 {
-    /// <summary>
-    /// The absolute path <paramref name="entryName"/> may be written to under <paramref name="root"/>,
-    /// or null and the reason it may not be written at all. <paramref name="root"/> must already
-    /// be canonical. Pure string work: no disk is touched, so the rules are testable on their own.
-    /// </summary>
+    /// <summary>The absolute path <paramref name="entryName"/> may be written to under <paramref name="root"/>, or null and the reason.
+    /// <paramref name="root"/> must already be canonical. Pure string work: no disk is touched.</summary>
     public static (string? Full, string? Why) Under(string root, string entryName)
     {
         if (string.IsNullOrWhiteSpace(entryName)) return (null, "the entry has no name");
 
-        // Refused before Combine, not after: Path.Combine("C:\dest", "C:\Windows\x") returns
-        // C:\Windows\x — the rooted second argument wins outright and the destination is simply
-        // dropped. Same for a name starting at the root of the current drive.
+        // Refused before Combine: Path.Combine("C:\dest", "C:\Windows\x") returns C:\Windows\x, the rooted argument wins.
         if (Path.IsPathRooted(entryName) || entryName.StartsWith('/') || entryName.StartsWith('\\'))
             return (null, "the entry names an absolute path");
 
-        // "notes.txt:payload" is not a file called that, it is an alternate data stream hidden
-        // on notes.txt. It never leaves the destination, which is exactly why it passes the
-        // test below and has to be caught here instead.
+        // "notes.txt:payload" is an alternate data stream on notes.txt; it stays inside the destination, so the fence below misses it.
         if (entryName.Contains(':')) return (null, "the entry names an alternate data stream");
 
         string full;
@@ -39,8 +26,7 @@ internal static class SafeEntryPath
             return (null, "the entry name is not a usable path");
         }
 
-        // The separator is part of the comparison. Without it C:\dest-evil starts with C:\dest
-        // and an archive gets to pick a folder next door.
+        // The separator is part of the comparison: C:\dest-evil starts with C:\dest.
         var fence = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
         if (!full.StartsWith(fence, StringComparison.OrdinalIgnoreCase))
             return (null, "the entry points outside the destination folder");
@@ -48,13 +34,8 @@ internal static class SafeEntryPath
         return (full, null);
     }
 
-    /// <summary>
-    /// Creates the folders leading to an entry, one level at a time, or returns why it stopped.
-    ///
-    /// Level by level because <see cref="Path.GetFullPath(string)"/> normalises text and does not
-    /// follow links: a junction planted in the destination is still inside it as far as the
-    /// string is concerned, and writing through it lands wherever it points.
-    /// </summary>
+    /// <summary>Creates the folders leading to an entry, or returns why it stopped. Level by level because GetFullPath does not
+    /// follow links: a junction planted in the destination would be written through.</summary>
     public static string? Create(string root, string directory)
     {
         var relative = Path.GetRelativePath(root, directory);
@@ -85,8 +66,7 @@ internal static class SafeEntryPath
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // Unreadable is not safe. Treat it as a link so the entry is refused rather than
-            // written to something we could not look at.
+            // Unreadable is not safe: treat it as a link so the entry is refused.
             return true;
         }
     }

@@ -23,12 +23,8 @@ public sealed record NewFileTemplate
 }
 
 /// <summary>
-/// The file types the shell itself offers under New, read from HKEY_CLASSES_ROOT. Read only:
-/// nothing here opens a key for writing, and what a type advertises is the shell's business.
-///
-/// Four forms are documented. NullFile, FileName and Data we can carry out ourselves. Command
-/// runs a program and Handler hands the job to a COM object — neither is offered, because an
-/// entry that is shown and then creates a broken empty file is worse than one that is absent.
+/// The file types the shell offers under New, read from HKEY_CLASSES_ROOT, never written. NullFile, FileName
+/// and Data are carried out here. Command and Handler entries run foreign code and are not offered.
 /// </summary>
 public static class ShellNew
 {
@@ -64,10 +60,8 @@ public static class ShellNew
             // A registry we cannot read means an empty New menu, not a window that fails to open.
         }
 
-        // What the registry has is whatever Windows and its installed apps put there — and on a
-        // machine where the context menu has been cleaned up it can be almost nothing. Measured
-        // here: only .lnk had a ShellNew key, not even .txt. A New menu offering one entry is not
-        // worth opening, so these are always offered; the registry's own entry wins if it exists.
+        // A cleaned-up registry can have almost nothing (measured here: only .lnk had a ShellNew key),
+        // so these are always offered. The registry's own entry wins if it exists.
         foreach (var built in BuiltIn) found.TryAdd(built.Extension, built);
 
         return [.. found.Values.OrderBy(t => t.Label, StringComparer.CurrentCultureIgnoreCase)];
@@ -85,8 +79,7 @@ public static class ShellNew
                 break;
 
             case NewFileSource.Data:
-                // CreateNew rather than WriteAllBytes: between choosing a free name and writing
-                // it, something else may have taken it, and the answer to that is an error.
+                // CreateNew: if something took the free name in the meantime, the answer is an error.
                 using (var file = new FileStream(path, FileMode.CreateNew))
                     file.Write(template.Data!);
                 break;
@@ -125,8 +118,7 @@ public static class ShellNew
 
         if (key.GetValue("FileName") is string file && file.Length > 0)
         {
-            // A template file that is gone would fail at the moment of the click, so the entry
-            // is dropped here instead.
+            // A template file that is gone would fail at the click, so the entry is dropped here.
             templatePath = TemplateFile(file);
             return templatePath is null ? null : NewFileSource.Template;
         }
@@ -169,11 +161,7 @@ public static class ShellNew
         return $"{extension.TrimStart('.').ToUpperInvariant()} file";
     }
 
-    /// <summary>
-    /// Labels are often a resource reference — "@shell32.dll,-30397" — which needs the string
-    /// table to read. Rather than show the user a DLL and an index, those fall through to the
-    /// friendly name of the type.
-    /// </summary>
+    /// <summary>A resource reference such as "@shell32.dll,-30397" is skipped, so the type's friendly name is used.</summary>
     private static string? Plain(object? value) =>
         value is string text && text.Length > 0 && text[0] != '@' ? text.Replace("&", "") : null;
 

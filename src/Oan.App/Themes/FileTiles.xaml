@@ -1,0 +1,46 @@
+<!-- How one item is drawn when the listing is not a table: the icon grid and the plain list. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ctl="clr-namespace:Oan.App.Controls">
+
+  <!-- The icon is sized explicitly: a 256px request can legitimately come back as a cropped 48px image. -->
+  <DataTemplate x:Key="TileTemplate">
+    <StackPanel x:Name="Tile" Margin="4,8,4,0">
+      <Grid Width="{Binding DataContext.Look.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}"
+            Height="{Binding DataContext.Look.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}">
+        <Image Source="{Binding Picture}" RenderOptions.BitmapScalingMode="HighQuality" />
+        <Image Source="{Binding Badge}" RenderOptions.BitmapScalingMode="HighQuality" />
+      </Grid>
+      <TextBlock Text="{Binding Name}" Margin="2,6,2,0" MaxHeight="34"
+                 TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+    </StackPanel>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsHidden}" Value="True">
+        <Setter TargetName="Tile" Property="Opacity" Value="0.55" />
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+
+  <!-- One line per item: the small icon and the name, nothing else. -->
+  <DataTemplate x:Key="ListTemplate">
+    <StackPanel x:Name="Line" Orientation="Horizontal" Margin="4,0">
+      <Grid Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+        <Image Source="{Binding Picture}" RenderOptions.BitmapScalingMode="HighQuality" />
+        <Image Source="{Binding Badge}" RenderOptions.BitmapScalingMode="HighQuality" />
+      </Grid>
+      <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+    </StackPanel>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsHidden}" Value="True">
+        <Setter TargetName="Line" Property="Opacity" Value="0.55" />
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+
+  <!-- A background for the same reason as RowPanel's: the gaps between tiles start a rubber band. -->
+  <ItemsPanelTemplate x:Key="TilePanel">
+    <ctl:VirtualizingWrapPanel ItemWidth="{Binding Look.TileWidth}" ItemHeight="{Binding Look.TileHeight}"
+                               Background="Transparent" />
+  </ItemsPanelTemplate>
+
+</ResourceDictionary>

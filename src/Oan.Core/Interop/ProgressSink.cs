@@ -1,23 +1,18 @@
 using Oan.Core.Operations;
 
+using Oan.Core.Links;
+
 namespace Oan.Core.Interop;
 
-/// <summary>
-/// Registered with <see cref="IFileOperation.Advise"/>. The per-item HRESULT that arrives in the
-/// Post* callbacks is the only place the shell says which item failed and why — PerformOperations
-/// itself returns S_OK even when items were denied.
-/// </summary>
+/// <summary>Registered with <see cref="IFileOperation.Advise"/>. The per-item HRESULT in the Post* callbacks is the only place the shell
+/// says which item failed: PerformOperations returns S_OK even when items were denied.</summary>
 internal sealed class ProgressSink : IFileOperationProgressSink
 {
     private readonly HashSet<string> _requested;
     private readonly List<FailedItem> _failed = [];
 
-    /// <param name="requested">
-    /// The items the caller asked for. The shell walks into folders and reports every descendant,
-    /// so only these count towards <see cref="Succeeded"/> — otherwise copying one folder of four
-    /// files reports six. An empty list counts every callback, which is what a new item needs: its
-    /// path is not known until the shell has created it.
-    /// </param>
+    /// <param name="requested">The shell reports every descendant of a folder, so only these count towards <see cref="Succeeded"/>.
+    /// An empty list counts every callback, which a new item needs: its path is unknown until created.</param>
     public ProgressSink(IEnumerable<string> requested) =>
         _requested = new HashSet<string>(requested.Select(Normalise), StringComparer.OrdinalIgnoreCase);
 
@@ -54,14 +49,13 @@ internal sealed class ProgressSink : IFileOperationProgressSink
     public void PauseTimer() { }
     public void ResumeTimer() { }
 
-    /// <summary>
-    /// Success here is not S_OK: a recycled or renamed item reports
-    /// COPYENGINE_S_DONT_PROCESS_CHILDREN. Any non-negative result means the shell handled the
-    /// item, except the code it uses for one the user chose to skip.
-    /// </summary>
+    /// <summary>Success is not only S_OK: a recycled or renamed item reports COPYENGINE_S_DONT_PROCESS_CHILDREN.
+    /// Any non-negative result counts, except the code for an item the user chose to skip.</summary>
     private void Record(IShellItem? item, int result)
     {
-        var path = ShellApi.PathOf(item);
+        // Past MAX_PATH the shell answers in 8.3 or \\?\-prefixed form, never the path it was given;
+        // without this a copy that worked was reported as zero items succeeded.
+        var path = LongPath.FromShell(ShellApi.PathOf(item));
 
         if (result < 0) _failed.Add(new FailedItem(path, result, ShellApi.Describe(result)));
         else if (result != HResult.UserIgnored && Requested(path)) Succeeded++;

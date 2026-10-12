@@ -15,6 +15,7 @@ internal static class Native
     internal const uint SHGFI_SYSICONINDEX = 0x4000;
     internal const uint SHGFI_USEFILEATTRIBUTES = 0x0010;
     internal const uint FILE_ATTRIBUTE_NORMAL = 0x0080;
+    internal const uint FILE_ATTRIBUTE_DIRECTORY = 0x0010;
     internal const uint ILD_TRANSPARENT = 0x0001;
 
     internal const int SHIL_LARGE = 0;
@@ -22,6 +23,9 @@ internal static class Native
     internal const int SHIL_EXTRALARGE = 2;
     internal const int SHIL_JUMBO = 4;
 
+    internal const uint MF_GRAYED = 0x0001;
+    internal const uint MF_CHECKED = 0x0008;
+    internal const uint MF_POPUP = 0x0010;
     internal const uint MF_BYPOSITION = 0x0400;
     internal const uint MF_SEPARATOR = 0x0800;
 
@@ -35,6 +39,7 @@ internal static class Native
     internal const uint TPM_LEFTALIGN = 0x0000;
     internal const uint TPM_RIGHTBUTTON = 0x0002;
     internal const uint TPM_RETURNCMD = 0x0100;
+    internal const uint TPM_NOANIMATION = 0x4000;
 
     internal const uint CMIC_MASK_UNICODE = 0x00004000;
     internal const uint CMIC_MASK_PTINVOKE = 0x20000000;
@@ -71,6 +76,40 @@ internal static class Native
     {
         public int X;
         public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MEASUREITEMSTRUCT
+    {
+        public uint CtlType;
+        public uint CtlID;
+        public uint itemID;
+        public uint itemWidth;
+        public uint itemHeight;
+        public nint itemData;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct DRAWITEMSTRUCT
+    {
+        public uint CtlType;
+        public uint CtlID;
+        public uint itemID;
+        public uint itemAction;
+        public uint itemState;
+        public nint hwndItem;
+        public nint hDC;
+        public RECT rcItem;
+        public nint itemData;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -128,11 +167,8 @@ internal static class Native
         [PreserveSig] int BindToHandler(nint bindCtx, in Guid bhid, in Guid riid, out nint ppv);
     }
 
-    /// <summary>
-    /// Declared only as far as CreateViewObject, which is the sixth slot. The five before it are
-    /// placeholders: a COM interface is a vtable, so every method ahead of the one being called
-    /// has to occupy its position or the call lands on the wrong function.
-    /// </summary>
+    /// <summary>Declared only as far as CreateViewObject, the sixth slot. The five before it are placeholders
+    /// holding their vtable position; do not reorder.</summary>
     [ComImport, Guid("000214e6-0000-0000-c000-000000000046"),
      InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     internal interface IShellFolder
@@ -222,6 +258,12 @@ internal static class Native
     [DllImport("user32.dll")]
     internal static extern int TrackPopupMenuEx(nint menu, uint flags, int x, int y, nint window, nint parameters);
 
+    [DllImport("user32.dll")]
+    internal static extern int GetMenuItemCount(nint menu);
+
+    [DllImport("user32.dll")]
+    internal static extern nint GetSubMenu(nint menu, int position);
+
     // 32-bit user32 exports no SetWindowLongPtrW, so an x86 build would throw on the first
     // right-click. The narrow call is correct there: a pointer fits in a LONG.
     internal static nint SetWindowLongPtr(nint window, int index, nint value) =>
@@ -248,4 +290,7 @@ internal static class Native
 
     [DllImport("ole32.dll")]
     internal static extern void OleUninitialize();
+
+    [DllImport("ole32.dll")]
+    internal static extern int OleFlushClipboard();
 }

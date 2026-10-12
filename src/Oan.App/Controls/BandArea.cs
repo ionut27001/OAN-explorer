@@ -3,12 +3,9 @@ using System.Windows.Controls;
 namespace Oan.App.Controls;
 
 /// <summary>
-/// Where a press may start a selection rectangle.
-///
-/// Inside the scrolled content, which is where the rows are drawn — and not in the column header
-/// row, which WPF puts inside that same scrolled content so the headers scroll sideways with
-/// their columns. That is not a guess: HeaderClickReachTests builds a real ListView and asserts
-/// it. Getting it wrong cost the header its click, and with it sorting by column, twice.
+/// Where a press may start a selection rectangle: inside the scrolled content but not the column header row,
+/// which WPF puts inside that same content. Empty space is inside it only because the items panels have a
+/// background (RowPanel, TilePanel). Pinned by HeaderClickReachTests and RowReachTests.
 /// </summary>
 internal static class BandArea
 {

@@ -12,13 +12,9 @@ public enum TabFit
 }
 
 /// <summary>
-/// The tab strip's layout, the way a browser does it. Tabs are all one width, wide while there
-/// are few and narrower as they pile up. Past the point where they would all be unreadable the
-/// selected one keeps enough room to be read and closed and the rest give way, shedding first
-/// their close button and then their title, until they are the icon alone.
-///
-/// The room comes from <see cref="RoomProperty"/> rather than from the measure constraint,
-/// because the strip sits in a scroll viewer and a scroll viewer offers infinite width.
+/// The tab strip's layout, as a browser does it: one width for all, narrowing as they pile up, the selected
+/// one keeping room to be read and closed. The room comes from <see cref="RoomProperty"/>, not the measure
+/// constraint, because a scroll viewer offers infinite width.
 /// </summary>
 internal sealed class TabBar : Panel
 {

@@ -6,9 +6,8 @@ using System.Windows;
 namespace Oan.App.Platform;
 
 /// <summary>
-/// The real Windows file clipboard, so a cut here pastes in Explorer and the other way round.
-/// The paths travel as CF_HDROP; whether it was a copy or a cut travels in the shell's
-/// "Preferred DropEffect" stream, which is a single DWORD of DROPEFFECT flags.
+/// The real Windows file clipboard, so a cut here pastes in Explorer and back. Paths travel as CF_HDROP;
+/// copy or cut travels in "Preferred DropEffect", a single DWORD of DROPEFFECT flags.
 /// </summary>
 internal static class ClipboardFiles
 {

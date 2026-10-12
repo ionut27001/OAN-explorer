@@ -1,37 +1,21 @@
 namespace Oan.Core.Sizes;
 
-/// <summary>
-/// One laid-out rectangle, in device-independent pixels. Its own struct rather than
-/// System.Windows.Rect, so the layout stays in Core with no reference to WPF.
-/// </summary>
+/// <summary>One laid-out rectangle, in device-independent pixels. Not System.Windows.Rect, so Core needs no WPF here.</summary>
 public readonly record struct Box(double X, double Y, double W, double H)
 {
     public double Area => W * H;
 
-    /// <summary>Long side over short side. 1 is a square; past about 8 it is a sliver you can
-    /// neither read a label in nor reliably put a mouse on.</summary>
+    /// <summary>Long side over short side. 1 is a square; past about 8 it is an unusable sliver.</summary>
     public double Aspect => W <= 0 || H <= 0 ? double.PositiveInfinity : W > H ? W / H : H / W;
 
     public bool Holds(double x, double y) => x >= X && y >= Y && x < X + W && y < Y + H;
 }
 
-/// <summary>
-/// Squarified treemap layout, after Bruls, Huizing and van Wijk.
-///
-/// Squarified rather than the alternatives, and that was measured rather than assumed: over
-/// 100,000 rectangles it lays out in 0.873 ms against strip's 359.6 ms, and — the reason that
-/// matters more — it produces zero rectangles worse than 8:1 even when one file holds 90% of the
-/// folder, where strip produces 6,641 and slice-and-dice produces 100,000. Sizes must arrive
-/// sorted descending; the algorithm assumes it and reads badly without it.
-/// </summary>
+/// <summary>Squarified treemap layout, after Bruls, Huizing and van Wijk. Measured over 100,000 rectangles: 0.873 ms against strip's 359.6 ms,
+/// and zero rectangles worse than 8:1 even when one file holds 90%. Sizes must arrive sorted descending.</summary>
 public static class Treemap
 {
-    /// <summary>
-    /// Fills the rectangle a row at a time along whichever side is currently shorter, growing
-    /// each row while the WORST aspect ratio in it keeps improving. That one test is the whole
-    /// algorithm: another rectangle in the row makes every rectangle in it thinner, and the row
-    /// closes the moment that costs more than it gains.
-    /// </summary>
+    /// <summary>Fills a row at a time along the shorter side, growing each row while the WORST aspect ratio in it keeps improving.</summary>
     public static void Lay(ReadOnlySpan<long> sizes, Box bounds, Span<Box> into)
     {
         var scale = Scale(sizes, bounds);
@@ -97,11 +81,7 @@ public static class Treemap
             : new Box(rest.X + thickness, rest.Y, rest.W - thickness, rest.H);
     }
 
-    /// <summary>
-    /// The worse of the two aspect ratios a row of this area would produce — the biggest
-    /// rectangle in it and the smallest. Computed from the areas rather than from laid-out boxes,
-    /// so the test costs nothing: the row is never actually placed until it closes.
-    /// </summary>
+    /// <summary>The worse of the two aspect ratios a row of this area would produce, computed from areas, before anything is placed.</summary>
     private static double Worst(double sum, double min, double max, double side)
     {
         var area = sum * sum;
@@ -109,7 +89,7 @@ public static class Treemap
         return Math.Max(across * max / area, area / (across * min));
     }
 
-    /// <summary>Nothing left to lay in: everything remaining gets an empty box at the corner.</summary>
+    /// <summary>Nothing left to lay in: everything remaining gets an empty box.</summary>
     private static void Collapse(Span<Box> into, ref int i, int count, Box rest)
     {
         for (; i < count; i++) into[i] = new Box(rest.X, rest.Y, 0, 0);

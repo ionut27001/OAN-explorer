@@ -108,11 +108,8 @@ internal static class ShellApi
     public static string PathOf(IShellItem? item) =>
         item is null ? "" : Name(item, SigdnFileSysPath) ?? Name(item, SigdnNormalDisplay) ?? "";
 
-    /// <summary>
-    /// IntPtr.Zero keeps the message derived from the HRESULT alone. The one-argument overload
-    /// picks up whatever IErrorInfo the thread happens to be carrying, which for the per-item
-    /// results the sink reports would be an unrelated reason attached to the wrong file.
-    /// </summary>
+    /// <summary>IntPtr.Zero keeps the message derived from the HRESULT alone; the one-argument overload picks up
+    /// whatever IErrorInfo the thread is carrying, an unrelated reason for the wrong file.</summary>
     public static string Describe(int hr) =>
         Marshal.GetExceptionForHR(hr, IntPtr.Zero)?.Message ?? $"HRESULT 0x{hr:X8}";
 

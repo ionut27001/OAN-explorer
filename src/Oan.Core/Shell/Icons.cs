@@ -5,10 +5,7 @@ using System.Windows.Media.Imaging;
 
 namespace Oan.Core.Shell;
 
-/// <summary>
-/// Shell icons as frozen WPF images. A lookup that fails returns null rather than throwing, so
-/// the caller can draw a placeholder and move on.
-/// </summary>
+/// <summary>Shell icons as frozen WPF images. A lookup that fails returns null rather than throwing.</summary>
 public static class ShellIcons
 {
     private const int MaxPerPath = 4096;
@@ -18,32 +15,21 @@ public static class ShellIcons
     private static readonly HashSet<string> PerFile =
         new(StringComparer.OrdinalIgnoreCase) { ".exe", ".scr", ".dll", ".lnk", ".ico", ".cur", ".ani", ".url", ".msc" };
 
-    /// <summary>One entry per extension and size, so it is bounded by how many extensions exist.</summary>
     private static readonly Dictionary<string, ImageSource> Shared = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>One entry per item. This is the one that grows with the filesystem.</summary>
     private static readonly Dictionary<string, ImageSource> PerPath = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly Dictionary<int, nint> ImageLists = [];
 
-    /// <summary>
-    /// The icon for <paramref name="path"/> at roughly <paramref name="size"/> pixels. The shell
-    /// holds four image lists — 16, 32, 48 and 256 — and <paramref name="size"/> snaps up to one
-    /// of them; ask for another number and WPF scales what comes back.
-    /// </summary>
-    /// <remarks>
-    /// Folders, executables and shortcuts are read from the item itself, so a cache miss blocks
-    /// in the shell: resolving a shortcut target, reading desktop.ini, hydrating a cloud
-    /// placeholder. A shortcut to a dead share blocks for the network timeout. Call this off the
-    /// UI thread. Every other file resolves from its name and never touches disk.
-    /// </remarks>
+    /// <summary>The icon for <paramref name="path"/>; <paramref name="size"/> snaps up to the shell's 16, 32, 48 or 256 list.</summary>
+    /// <remarks>Folders, executables and shortcuts are read from the item itself: a shortcut to a dead share blocks for
+    /// the network timeout. Call this off the UI thread.</remarks>
     public static ImageSource? Get(string path, bool isDirectory, int size = 16)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
 
-        // A folder can carry its own icon — desktop.ini, OneDrive, a repository — so folders are
-        // never shared. Files are, unless the icon lives inside the file. No extension at all is
-        // a kind like any other: LICENSE, Makefile and Dockerfile all share the generic icon.
+        // Folders can carry their own icon (desktop.ini, OneDrive) and are never shared. Files are, unless the icon
+        // lives inside the file; no extension at all is a kind like any other.
         var extension = isDirectory ? null : Path.GetExtension(path);
         var shared = extension is not null && extension.Length != 1 && !PerFile.Contains(extension);
 
@@ -55,12 +41,12 @@ public static class ShellIcons
             if (cache.TryGetValue(key, out var cached)) return cached;
         }
 
+        // A folder that is not on disk — one inside an archive — still gets the plain folder icon.
         var icon = shared
-            ? Load("file" + extension, byExtension: true, size)
-            : Load(path, byExtension: false, size);
+            ? Load("file" + extension, Native.FILE_ATTRIBUTE_NORMAL, size)
+            : Load(path, null, size) ?? (isDirectory ? Load("folder", Native.FILE_ATTRIBUTE_DIRECTORY, size) : null);
 
-        // Failures are not cached. A locked file, a drive still spinning up or an extension that
-        // faulted once during startup all recover, and a memoised null never would.
+        // Failures are not cached: a locked file or a drive still spinning up recovers.
         if (icon is null) return null;
 
         lock (cache)
@@ -78,18 +64,16 @@ public static class ShellIcons
         lock (PerPath) PerPath.Clear();
     }
 
-    private static ImageSource? Load(string path, bool byExtension, int size)
+    /// <param name="assumed">Set to resolve from the name alone, as a thing of these attributes.</param>
+    private static ImageSource? Load(string path, uint? assumed, int size)
     {
         try
         {
             var flags = Native.SHGFI_SYSICONINDEX;
-            uint attributes = 0;
-            if (byExtension)
-            {
-                // Resolves from the name alone, so a generic icon costs no disk access.
-                flags |= Native.SHGFI_USEFILEATTRIBUTES;
-                attributes = Native.FILE_ATTRIBUTE_NORMAL;
-            }
+            var attributes = assumed ?? 0;
+
+            // Resolves from the name alone, so a generic icon costs no disk access.
+            if (assumed is not null) flags |= Native.SHGFI_USEFILEATTRIBUTES;
 
             var info = default(Native.SHFILEINFO);
             unsafe
@@ -120,8 +104,7 @@ public static class ShellIcons
             }
             finally
             {
-                // ImageList_GetIcon hands back a copy. Leaked HICONs exhaust the process GDI
-                // quota, and the symptom is the desktop failing to draw, not a crash here.
+                // ImageList_GetIcon hands back a copy; leaked HICONs exhaust the process GDI quota.
                 Native.DestroyIcon(icon);
             }
         }
@@ -131,12 +114,8 @@ public static class ShellIcons
         }
     }
 
-    /// <summary>
-    /// The jumbo list pads rather than scales: an item with no 256px asset comes back as a 256px
-    /// bitmap with its small icon drawn at the origin on transparent space, which renders as a
-    /// speck floating in an empty box. Crop back to the box the drawing fills, keeping the icon's
-    /// own padding, so the caller gets the smaller icon and scales it like any other.
-    /// </summary>
+    /// <summary>The jumbo list pads rather than scales: an item with no 256px asset is its small icon at the origin of
+    /// a transparent 256px bitmap. Crop back to the box the drawing fills.</summary>
     private static BitmapSource Unpad(BitmapSource image)
     {
         var drawn = DrawnExtent(image);
@@ -185,8 +164,7 @@ public static class ShellIcons
         {
             if (ImageLists.TryGetValue(which, out var cached)) return cached;
 
-            // A failure is left out of the map so the next call retries; caching the 0 would
-            // lose every icon at this size for the life of the process.
+            // A failure is not cached, so the next call retries.
             if (Native.SHGetImageList(which, Native.IID_IImageList, out var list) != 0 || list == 0)
                 return 0;
 

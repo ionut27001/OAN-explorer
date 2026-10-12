@@ -3,15 +3,8 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Oan.Core.Mount;
 
-/// <summary>
-/// The drive letter behind <c>\\.\CdRom1</c> or <c>\\.\PhysicalDrive3</c>, which is all
-/// GetVirtualDiskPhysicalPath will tell us after an attach.
-///
-/// No call goes straight from one to the other. What does work: the physical path names a
-/// device by type and number, and every drive letter can be asked which device it sits on
-/// (IOCTL_STORAGE_GET_DEVICE_NUMBER). The letter whose answer matches is ours. The query is
-/// opened with no access at all, which needs no administrator and spins up no media.
-/// </summary>
+/// <summary>The drive letter behind <c>\\.\CdRom1</c> or <c>\\.\PhysicalDrive3</c>, which is all GetVirtualDiskPhysicalPath gives.
+/// Every letter is asked which device it sits on (IOCTL_STORAGE_GET_DEVICE_NUMBER), opened with no access: no admin, no media spin-up.</summary>
 internal static class DriveLetters
 {
     private const uint IoctlStorageGetDeviceNumber = 0x002D1080;
@@ -27,8 +20,7 @@ internal static class DriveLetters
         (@"\\.\PhysicalDrive", FileDeviceDisk),
     ];
 
-    /// <summary>"E:", or null when no letter carries that device — which is a real answer:
-    /// the volume takes a moment to appear, and it may never get a letter at all.</summary>
+    /// <summary>"E:", or null when no letter carries that device: the volume takes a moment to appear, and may never get one.</summary>
     internal static string? For(string? physicalPath)
     {
         if (!TryParse(physicalPath, out var device)) return null;

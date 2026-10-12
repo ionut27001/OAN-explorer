@@ -1,95 +1,156 @@
 namespace Oan.Core.Archives;
 
-/// <summary>
-/// Writes entries to disk under a destination they are not allowed to leave.
-///
-/// The order is deliberate: everything that can refuse an entry runs before a single byte is
-/// written, and the one refusal that cannot be known in advance — an archive that expands past
-/// its cap — deletes what it had started before it reports.
-/// </summary>
-internal static class ArchiveExtraction
+/// <summary>Writes entries to disk under a destination they are not allowed to leave. Every refusal runs before a byte is written;
+/// an archive that expands past its cap deletes what it had started. Fed through <see cref="Begin"/> and <see cref="End"/>,
+/// so the same rules hold whether OAN pulls the bytes or 7-Zip pushes them.</summary>
+internal sealed class ArchiveExtraction(string root, IReadOnlyList<string>? only, ArchiveLimits limits, long archiveBytes)
 {
-    public static ExtractResult Run(IEnumerable<SourceEntry> source, string root, IReadOnlyList<string>? only,
-        ArchiveLimits limits, long archiveBytes, CancellationToken ct)
-    {
-        // Matching by removal: what is left at the end was asked for and is not in the archive,
-        // which is a refusal of its own rather than a quiet success.
-        var wanted = only is null ? null : new HashSet<string>(only, StringComparer.OrdinalIgnoreCase);
-        var refused = new List<RefusedEntry>();
-        var budget = Budget(archiveBytes, limits);
-        var written = 0L;
-        var extracted = 0;
-        var seen = 0;
-        string? stopped = null;
+    // Matched by removal: what is left at the end was asked for and is not in the archive.
+    private readonly HashSet<string>? _wanted = only is null ? null : new(only, StringComparer.OrdinalIgnoreCase);
+    private readonly List<RefusedEntry> _refused = [];
+    private readonly long _budget = Budget(archiveBytes, limits);
+    private long _written;
+    private int _extracted;
+    private int _seen;
+    private string? _stopped;
+    private bool _locked;
+    private (SourceEntry Entry, string Full, CappedFile File)? _current;
 
-        foreach (var entry in Guarded(source, why => stopped = why))
+    public bool Stopped => _stopped is not null;
+    public bool Selective => _wanted is not null;
+
+    public bool Wants(string name) => _wanted is null || _wanted.Contains(name);
+    public void Stop(string why) => _stopped ??= why;
+
+    /// <summary>The reader was asked for a password nobody gave.</summary>
+    public void StopLocked()
+    {
+        _locked = true;
+        Stop("Stopped: this archive needs a password.");
+    }
+
+    /// <summary>For readers that hand out a stream per entry. 7-Zip drives Begin and End itself.</summary>
+    public void Pull(IEnumerable<SourceEntry> source, CancellationToken ct)
+    {
+        foreach (var entry in Guarded(source, Stop))
         {
             ct.ThrowIfCancellationRequested();
+            if (Stopped) break;
+            if (Begin(entry) is not { } output) continue;
 
-            if (++seen > limits.MaxEntries)
+            try
             {
-                stopped = $"Stopped: this archive holds more than {limits.MaxEntries:N0} entries.";
-                break;
+                using (var input = entry.Open!()) Copy(input, output, ct);
+                End(null);
             }
-            if (wanted is not null && !wanted.Remove(entry.Name)) continue;
-
-            var (bytes, refusal, over) = One(entry, root, budget - written, ct);
-            if (refusal is not null) refused.Add(refusal);
-            if (over)
+            catch (Exception e)
             {
-                stopped = $"Stopped after {written:N0} bytes: this archive expands past the cap.";
-                break;
+                // End first: a half-written file that looks finished is worse than no file.
+                End(e.Message);
+                if (!ArchiveSource.Recoverable(e)) throw;
             }
-            if (refusal is not null) continue;
+        }
+    }
 
-            written += bytes;
-            extracted++;
+    /// <summary>Where this entry's bytes go, or null when it gets none. Every stream handed out must be given back to <see cref="End"/>.</summary>
+    public Stream? Begin(SourceEntry entry)
+    {
+        if (Stopped) return null;
+        if (++_seen > limits.MaxEntries)
+        {
+            Stop($"Stopped: this archive holds more than {limits.MaxEntries:N0} entries.");
+            return null;
+        }
+        if (_wanted is not null && !_wanted.Remove(entry.Name)) return null;
+
+        var (full, refusal) = Prepare(entry, root, _budget - _written);
+        if (refusal is not null)
+        {
+            _refused.Add(refusal);
+            return null;
+        }
+        if (entry.IsDirectory)
+        {
+            _extracted++;
+            return null;
         }
 
-        if (wanted is not null)
-            refused.AddRange(wanted.Select(name =>
+        try
+        {
+            var file = new CappedFile(full!, _budget - _written);
+            _current = (entry, full!, file);
+            return file;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _refused.Add(new RefusedEntry(entry.Name, RefusalReason.Failed, e.Message));
+            return null;
+        }
+    }
+
+    /// <summary><paramref name="failure"/> is why the bytes did not all arrive, or null when they did.</summary>
+    public void End(string? failure, RefusalReason reason = RefusalReason.Failed)
+    {
+        if (_current is not var (entry, full, file)) return;
+        _current = null;
+        file.Dispose();
+
+        if (file.Over)
+        {
+            // A bomb does not get a second attempt with the next entry.
+            Discard(full);
+            _refused.Add(new RefusedEntry(entry.Name, RefusalReason.TooLarge, "it expands past what the cap allows"));
+            Stop($"Stopped after {_written:N0} bytes: this archive expands past the cap.");
+        }
+        else if (failure is not null)
+        {
+            Discard(full);
+            _refused.Add(new RefusedEntry(entry.Name, reason, failure));
+        }
+        else
+        {
+            if (entry.Modified is { } when) Touch(full, when);
+            _written += file.Written;
+            _extracted++;
+        }
+    }
+
+    /// <summary>An entry that failed before it was ever given somewhere to go.</summary>
+    public void Fail(SourceEntry entry, string why)
+    {
+        if (_wanted is null || _wanted.Remove(entry.Name))
+            _refused.Add(new RefusedEntry(entry.Name, RefusalReason.Failed, why));
+    }
+
+    public ExtractResult Result()
+    {
+        if (_wanted is not null)
+            _refused.AddRange(_wanted.Select(name =>
                 new RefusedEntry(name, RefusalReason.NotFound, "the archive has no entry with that name")));
 
         return new ExtractResult
         {
             Destination = root,
-            Extracted = extracted,
-            Bytes = written,
-            Refused = refused,
-            Error = stopped,
+            Extracted = _extracted,
+            Bytes = _written,
+            Refused = _refused,
+            Error = _stopped,
+            NeedsPassword = _locked,
         };
     }
 
-    /// <summary>
-    /// A reader that gives up halfway ends the walk and says so, instead of throwing past the
-    /// count of what was already written — "we wrote 40 and then the archive broke" is a
-    /// different answer from "we wrote nothing".
-    /// </summary>
-    /// <summary>
-    /// One entry: where it may go, and its bytes. <c>Over</c> means the cap was reached — the
-    /// caller stops the whole run, because a bomb does not get a second attempt with the next
-    /// entry.
-    /// </summary>
-    private static (long Bytes, RefusedEntry? Refusal, bool Over) One(
-        SourceEntry entry, string root, long left, CancellationToken ct)
+    private static void Copy(Stream input, Stream output, CancellationToken ct)
     {
-        var (full, refusal) = Prepare(entry, root, left);
-        if (refusal is not null) return (0, refusal, false);
-        if (entry.IsDirectory) return (0, null, false);
-
-        try
+        var buffer = new byte[64 * 1024];
+        int read;
+        while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
         {
-            var (bytes, over) = Copy(entry, full!, left, ct);
-            return over
-                ? (0, new RefusedEntry(entry.Name, RefusalReason.TooLarge, "it expands past what the cap allows"), true)
-                : (bytes, null, false);
-        }
-        catch (Exception e) when (ArchiveSource.Recoverable(e))
-        {
-            return (0, new RefusedEntry(entry.Name, RefusalReason.Failed, e.Message), false);
+            ct.ThrowIfCancellationRequested();
+            output.Write(buffer, 0, read);
         }
     }
 
+    /// <summary>A reader that gives up halfway ends the walk and says so, keeping the count of what was already written.</summary>
     private static IEnumerable<SourceEntry> Guarded(IEnumerable<SourceEntry> source, Action<string> stop)
     {
         using var walk = source.GetEnumerator();
@@ -116,7 +177,7 @@ internal static class ArchiveExtraction
         RefusedEntry Refuse(RefusalReason reason, string why) => new(entry.Name, reason, why);
 
         if (entry.Encrypted)
-            return (null, Refuse(RefusalReason.Encrypted, "it is encrypted, and OAN does not ask for passwords"));
+            return (null, Refuse(RefusalReason.Encrypted, "it is encrypted, and no password was given"));
         if (entry.IsLink)
             return (null, Refuse(RefusalReason.Link, "it is a link, and a link is not a file"));
 
@@ -131,53 +192,16 @@ internal static class ArchiveExtraction
         if (entry.Size > remaining)
             return (null, Refuse(RefusalReason.TooLarge, $"it claims {entry.Size:N0} bytes, past what the cap has left"));
 
-        if (File.Exists(full) && SafeEntryPath.IsLink(full))
-            return (null, Refuse(RefusalReason.Link, "a link of that name is already in the destination"));
+        if (File.Exists(full))
+            return SafeEntryPath.IsLink(full)
+                ? (null, Refuse(RefusalReason.Link, "a link of that name is already in the destination"))
+                : (null, Refuse(RefusalReason.Exists, "a file of that name is already there"));
 
         return (full, null);
     }
 
-    private static (long Bytes, bool OverBudget) Copy(SourceEntry entry, string full, long budget, CancellationToken ct)
-    {
-        var buffer = new byte[64 * 1024];
-        var total = 0L;
-        var over = false;
-
-        try
-        {
-            using var source = entry.Open();
-            using var output = new FileStream(full, FileMode.Create, FileAccess.Write, FileShare.None);
-
-            int read;
-            while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                total += read;
-                if (total > budget) { over = true; break; }
-
-                output.Write(buffer, 0, read);
-            }
-        }
-        catch
-        {
-            // Before the cancellation or the failure is allowed to travel: a half-written file
-            // that looks finished is worse than no file at all.
-            Discard(full);
-            throw;
-        }
-
-        if (over) { Discard(full); return (total, true); }
-
-        if (entry.Modified is { } when) Touch(full, when);
-        return (total, false);
-    }
-
-    /// <summary>
-    /// The archive's ratio against its own size on disk, which is a fact, rather than against
-    /// the sizes in its header, which are whatever it says they are. The floor keeps a 200-byte
-    /// zip of a megabyte of zeroes — a real file, not an attack — from being refused.
-    /// </summary>
+    /// <summary>The ratio is against the archive's size on disk, never the sizes its header claims.
+    /// The floor keeps a 200-byte zip of a megabyte of zeroes from being refused.</summary>
     private static long Budget(long archiveBytes, ArchiveLimits limits)
     {
         var ratio = Math.Max(1, limits.MaxRatio);
@@ -187,7 +211,7 @@ internal static class ArchiveExtraction
 
     private static void Touch(string path, DateTime when)
     {
-        // The bytes are the file; the timestamp is a courtesy and does not fail the entry.
+        // The timestamp is a courtesy and does not fail the entry.
         try { File.SetLastWriteTime(path, when); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentOutOfRangeException) { }
     }
@@ -196,5 +220,25 @@ internal static class ArchiveExtraction
     {
         try { File.Delete(path); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
+    /// <summary>The cap is measured on bytes actually written. Going over is an IOException so every writer, ours or 7-Zip's, stops the same way.</summary>
+    private sealed class CappedFile(string path, long budget)
+        : FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024)
+    {
+        public long Written { get; private set; }
+        public bool Over { get; private set; }
+
+        // The one override: on a derived FileStream the span overload lands here too.
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            if (Written + count > budget)
+            {
+                Over = true;
+                throw new IOException("The archive expands past the cap.");
+            }
+            base.Write(buffer, offset, count);
+            Written += count;
+        }
     }
 }

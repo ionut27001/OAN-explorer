@@ -3,16 +3,8 @@ using System.IO.Enumeration;
 
 namespace Oan.Core.Sizes;
 
-/// <summary>
-/// Everything under a folder, as flat arrays: one entry per file and folder, each pointing at its
-/// parent. Flat rather than a graph of nodes because it is drawn, not navigated — a million
-/// objects with four references each is the version that runs out of memory, and nothing about
-/// laying out rectangles needs pointers.
-///
-/// Measured on this machine: 12.1–12.6 bytes per file, so 14 MB for a 1.1 million file profile.
-/// Names are not kept; they cost another 95–135 bytes each, and only the one under the pointer is
-/// ever needed. <see cref="Name"/> reads it back off the path when asked.
-/// </summary>
+/// <summary>Everything under a folder, as flat arrays: one entry per file and folder, each pointing at its parent.
+/// Measured: 67 bytes per entry (82 MB for 1.1 million files); the walk that builds it peaks at 285 MB alive.</summary>
 public sealed class SizeTree
 {
     private SizeTree(string root, long[] size, int[] parent, char[] text, int[] at, int[] len,
@@ -31,19 +23,13 @@ public sealed class SizeTree
         NotFollowed = notFollowed;
     }
 
-    /// <summary>
-    /// Every name, end to end in one buffer, with an offset and a length per entry. Measured: a
-    /// string each costs 95-135 bytes on a profile of a million files — over a hundred megabytes
-    /// of object headers for text averaging twenty characters. This is about a third of that.
-    /// </summary>
+    /// <summary>Every name end to end in one buffer, with an offset and a length per entry. Measured: a string each costs 95-135 bytes.</summary>
     private readonly char[] _text;
     private readonly int[] _at;
     private readonly int[] _len;
     private readonly bool[] _folder;
 
-    /// <summary>Every index, grouped by parent, with <see cref="_first"/> saying where each
-    /// group starts. A counting sort rather than a list per folder: one array of ints instead of
-    /// a hundred thousand objects, and the map asks for children folder by folder.</summary>
+    /// <summary>Every index, grouped by parent (counting sort); <see cref="_first"/> says where each group starts.</summary>
     private readonly int[] _children;
     private readonly int[] _first;
 
@@ -65,11 +51,7 @@ public sealed class SizeTree
 
     public string Name(int i) => new(_text, _at[i], _len[i]);
 
-    /// <summary>
-    /// The full path of one entry, built by walking up the parents. Built on demand rather than
-    /// kept: it is wanted for the one thing under the pointer, and keeping a path per entry is
-    /// what the packed names exist to avoid.
-    /// </summary>
+    /// <summary>The full path of one entry, built on demand by walking up the parents.</summary>
     public string PathOf(int i)
     {
         var parts = new Stack<string>();
@@ -80,18 +62,15 @@ public sealed class SizeTree
 
     public bool IsFolder(int i) => _folder[i];
 
-    /// <summary>
-    /// Walks the whole tree, once, on as many threads as the machine has. The same shape as
-    /// FolderSize's walk and for the same reasons — one folder per thread off a shared queue,
-    /// reparse points refused, a folder that will not open counted rather than hidden.
-    /// </summary>
-    public static SizeTree? Read(string root, CancellationToken ct = default)
+    /// <summary>Walks the whole tree once, on many threads; same shape as FolderSize's walk.</summary>
+    /// <param name="found">Entries read so far, raised on a walking thread every few thousand. There is no total to count towards.</param>
+    public static SizeTree? Read(string root, CancellationToken ct = default, Action<int>? found = null)
     {
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return null;
         ct.ThrowIfCancellationRequested();
 
         var key = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-        var walk = new Walk(key, ct);
+        var walk = new Walk(key, ct, found);
         if (!walk.Run(Math.Clamp(Environment.ProcessorCount, 2, 16))) return null;
 
         ct.ThrowIfCancellationRequested();
@@ -105,7 +84,7 @@ public sealed class SizeTree
         return _children.AsSpan(_first[at], _first[at + 1] - _first[at]);
     }
 
-    private sealed class Walk(string root, CancellationToken ct)
+    private sealed class Walk(string root, CancellationToken ct, Action<int>? found = null)
     {
         private readonly BlockingCollection<(string Path, int Index)> _todo = new(new ConcurrentBag<(string, int)>());
         private readonly ConcurrentBag<(string Name, int Parent, long Size, bool Folder, int At)> _found = [];
@@ -113,6 +92,7 @@ public sealed class SizeTree
         private int _outstanding = 1;
         private int _next;
         private int _skipped;
+        private int _reported;
         private int _notFollowed;
         private bool _rootRefused;
 
@@ -166,9 +146,8 @@ public sealed class SizeTree
                 written += label.Length;
             }
 
-            // Folders carry what is beneath them, and a child's total is only final once its own
-            // children are. Walking from the deepest up is what makes one pass enough — indices
-            // are handed out as folders are discovered, so a parent always has a smaller one.
+            // Deepest first makes one pass enough: indices are handed out as folders are discovered,
+            // so a parent always has a smaller one than its children.
             for (var i = count - 1; i >= 0; i--)
             {
                 if (parent[i] >= 0) size[parent[i]] += folder[i] ? size[i] : 0;
@@ -194,6 +173,18 @@ public sealed class SizeTree
                 if (!ct.IsCancellationRequested) Read(path, index);
                 if (Interlocked.Decrement(ref _outstanding) == 0) _todo.CompleteAdding();
             }
+        }
+
+        /// <summary>One message per few thousand entries; a callback per directory would cost more than reading it.</summary>
+        private void Report()
+        {
+            if (found is null) return;
+
+            var now = Volatile.Read(ref _next);
+            if (now - Volatile.Read(ref _reported) < 4096) return;
+
+            Volatile.Write(ref _reported, now);
+            found(now);
         }
 
         private void Read(string path, int index)
@@ -224,6 +215,7 @@ public sealed class SizeTree
                 }
 
                 if (index >= 0) _totals[index] = here;
+                Report();
                 Interlocked.Add(ref _skipped, level.Skipped);
                 Interlocked.Add(ref _notFollowed, level.NotFollowed);
             }
@@ -235,7 +227,6 @@ public sealed class SizeTree
         }
     }
 
-    /// <summary>One level: each file's size, each subfolder's path, and the name of both.</summary>
     private sealed class Level : FileSystemEnumerator<(long Bytes, string? Folder, string Name)>
     {
         private bool _readAnEntry;

@@ -48,6 +48,23 @@ public class ArchiveSortTests
         Assert.DoesNotContain("sample.zip", vm.Rows.Select(r => r.Name));
     }
 
+    [Fact]
+    public async Task Copy_is_refused_inside_an_archive_because_the_path_names_nothing()
+    {
+        using var temp = new TempFolder();
+        temp.AddFile("outside.txt");
+        Zip(temp.Root, "readme.txt");
+
+        var vm = await Inside(temp);
+        vm.Selection = [vm.Rows.Single(r => r.Name == "readme.txt")];
+
+        // The row's FullPath is the archive's path with the entry appended, so the real clipboard
+        // would carry a path that names nothing and fails in whatever program pastes it.
+        Assert.True(vm.HasSelection);
+        Assert.False(vm.CanCopyOut);
+        Assert.False(vm.CopyCommand.CanExecute(null));
+    }
+
     private static async Task<MainViewModel> Inside(TempFolder temp)
     {
         var vm = new MainViewModel(new NoOps(), new Settings());

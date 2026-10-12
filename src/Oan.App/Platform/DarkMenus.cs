@@ -3,16 +3,9 @@ using System.Runtime.InteropServices;
 namespace Oan.App.Platform;
 
 /// <summary>
-/// Makes the shell's own context menus dark.
-///
-/// The title bar has a documented flag; menus do not. A Win32 menu is drawn by the system in the
-/// theme the PROCESS has asked for, and the only way to ask is <c>SetPreferredAppMode</c> —
-/// exported from uxtheme.dll by ordinal 135 and by no name at all. Explorer and every dark file
-/// manager on Windows calls it; there is no documented alternative, and without it a dark window
-/// opens a white menu.
-///
-/// Undocumented means it can be withdrawn. Everything here is best-effort: if the export is gone
-/// or the call fails, the menus stay light and nothing else changes.
+/// Makes the shell's own context menus dark. A Win32 menu is drawn in the theme the PROCESS asked for, and the
+/// only way to ask is SetPreferredAppMode, exported from uxtheme.dll by ordinal 135 and no name.
+/// Undocumented, so best-effort: if it fails the menus stay light.
 /// </summary>
 internal static class DarkMenus
 {
@@ -29,9 +22,7 @@ internal static class DarkMenus
     {
         try
         {
-            // ForceDark rather than AllowDark: AllowDark defers to each control's own opt-in,
-            // which a menu the shell creates has never done, so the menu would stay light while
-            // everything else went dark — the exact half-applied look this is here to avoid.
+            // ForceDark, not AllowDark: AllowDark defers to each control's own opt-in, which a shell menu never makes.
             SetPreferredAppMode(dark ? PreferredAppMode.ForceDark : PreferredAppMode.ForceLight);
             FlushMenuThemes();
             return null;

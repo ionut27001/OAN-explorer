@@ -2,8 +2,6 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:ctl="clr-namespace:Oan.App.Controls">
 
-  <!-- Here rather than in one window's resources, because the controls that ask "is this the
-       value I stand for" are spread across the toolbar, the appearance menu and the window. -->
   <ctl:IsConverter x:Key="Is" />
 
   <Style x:Key="Glyph" TargetType="TextBlock">
@@ -14,9 +12,8 @@
   </Style>
 
   <Style x:Key="FlatButton" TargetType="ButtonBase">
-    <!-- Icon-only buttons have no text, so without this a screen reader announces "button"
-         and nothing else. Derived from the tooltip rather than set per button, so a new
-         button cannot ship unlabelled. -->
+    <!-- Icon-only buttons have no text, so a screen reader would announce only "button".
+         Derived from the tooltip so a new button cannot ship unlabelled. -->
     <Setter Property="AutomationProperties.Name"
             Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
@@ -26,7 +23,7 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ButtonBase">
-          <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+          <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource Corner}"
                   Padding="{TemplateBinding Padding}">
             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                               VerticalAlignment="Center" />
@@ -40,7 +37,7 @@
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
               <Setter TargetName="Bd" Property="Background" Value="Transparent" />
-              <Setter Property="Opacity" Value="0.35" />
+              <Setter Property="Opacity" Value="0.5" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -76,8 +73,6 @@
     </Style.Triggers>
   </Style>
 
-  <!-- One of a set: the mark of the size is its shape, so the group reads at a glance and needs
-       no text in a bar that is already full. -->
   <Style x:Key="Segment" TargetType="RadioButton">
     <Setter Property="AutomationProperties.Name"
             Value="{Binding RelativeSource={RelativeSource Self}, Path=ToolTip}" />
@@ -104,14 +99,10 @@
     </Setter>
   </Style>
 
-  <!-- Acrylic is a blur of whatever window is behind, so chrome drawn straight onto it has no
-       idea how bright its own background is: measured over a white window, the muted status text
-       came out at 1.31:1. This lays a scrim under the bars that carry text, in that one mode.
-       Mica is a tint of the wallpaper alone and does not move, so it is left clear. -->
-  <!-- One surface for everything below the tabs: the bars, the sidebar and the list are the same
-       brush as the selected tab, so the tab flows into the page instead of sitting on it. It is
-       opaque on purpose - translucent, the tab and the bar let different things through and land
-       a shade apart. The glass is all in the caption band above. -->
+  <!-- Acrylic blurs whatever window is behind: measured over a white one, the muted status text came
+       out at 1.31:1. So a scrim goes under the bars that carry text, in that mode only. -->
+  <!-- One surface for everything below the tabs, the same brush as the selected tab. Opaque on purpose:
+       translucent, the tab and the bar let different things through and land a shade apart. -->
   <Style x:Key="ChromeBar" TargetType="Border">
     <Setter Property="Background" Value="{DynamicResource Surface}" />
   </Style>
@@ -127,7 +118,7 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="TextBox">
-          <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+          <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource Corner}"
                   BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
             <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
           </Border>
@@ -182,17 +173,28 @@
     </Setter>
   </Style>
 
+  <!-- One entry of the New submenu. The templates come from the registry at startup. -->
+  <Style x:Key="NewEntry" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+    <Setter Property="Header" Value="{Binding Label}" />
+    <Setter Property="InputGestureText" Value="{Binding Gesture}" />
+    <Setter Property="Command" Value="{Binding Command}" />
+    <Setter Property="CommandParameter" Value="{Binding}" />
+  </Style>
+
   <Style x:Key="Row" TargetType="ListViewItem">
-    <!-- The row itself carries no text, so without this a screen reader lands on it and
-         announces "data item". The columns are separate children; the name is what the row is. -->
+    <!-- The row itself carries no text, so without this a screen reader announces "data item". -->
     <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
     <Setter Property="SnapsToDevicePixels" Value="True" />
-    <Setter Property="Height" Value="28" />
+    <Setter Property="Height" Value="{DynamicResource RowHeight}" />
+    <!-- The system focus frame outlines the whole container, which spans the list; the row stops at its columns. -->
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ListViewItem">
-          <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Margin="2,0">
+          <!-- Only as wide as the columns, as Explorer draws it: right of them is empty space, not the row. -->
+          <Border x:Name="Bd" Background="Transparent" CornerRadius="{DynamicResource Corner}" Margin="2,0"
+                  HorizontalAlignment="Left">
             <GridViewRowPresenter VerticalAlignment="Center"
                                   Content="{TemplateBinding Content}"
                                   Columns="{TemplateBinding GridView.ColumnCollection}" />
@@ -205,14 +207,19 @@
               <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Selected}" />
               <Setter Property="Foreground" Value="{DynamicResource SelectedFg}" />
             </Trigger>
+            <Trigger Property="ctl:DropTarget.IsOn" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Selected}" />
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Fg}" />
+              <Setter TargetName="Bd" Property="BorderThickness" Value="1" />
+              <Setter Property="Foreground" Value="{DynamicResource SelectedFg}" />
+            </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value>
     </Setter>
   </Style>
 
-  <!-- The grid counterpart of Row. The panel gives every tile the same box, so this one stretches
-       into it instead of carrying a size of its own. -->
+  <!-- The grid counterpart of Row. The panel gives every tile the same box, so this one stretches into it. -->
   <Style x:Key="Tile" TargetType="ListViewItem">
     <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
@@ -222,7 +229,7 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ListViewItem">
-          <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Margin="3">
+          <Border x:Name="Bd" Background="Transparent" CornerRadius="{DynamicResource Corner}" Margin="3">
             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Top" />
           </Border>
           <ControlTemplate.Triggers>
@@ -231,6 +238,12 @@
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
               <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Selected}" />
+              <Setter Property="Foreground" Value="{DynamicResource SelectedFg}" />
+            </Trigger>
+            <Trigger Property="ctl:DropTarget.IsOn" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Selected}" />
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Fg}" />
+              <Setter TargetName="Bd" Property="BorderThickness" Value="1" />
               <Setter Property="Foreground" Value="{DynamicResource SelectedFg}" />
             </Trigger>
           </ControlTemplate.Triggers>
@@ -244,8 +257,8 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ContextMenu">
-          <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                  BorderThickness="1" CornerRadius="4" Padding="4">
+          <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Border}"
+                  BorderThickness="1" CornerRadius="{DynamicResource Corner}" Padding="4">
             <StackPanel IsItemsHost="True" />
           </Border>
         </ControlTemplate>
@@ -259,7 +272,7 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="MenuItem">
-          <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
+          <Border x:Name="Bd" Background="Transparent" CornerRadius="{DynamicResource Corner}" Padding="{TemplateBinding Padding}">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="18" />
@@ -280,8 +293,8 @@
                          Foreground="{DynamicResource FgMuted}" />
               <Popup x:Name="PART_Popup" Placement="Right" HorizontalOffset="-4" AllowsTransparency="True"
                      Focusable="False" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
-                <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                        BorderThickness="1" CornerRadius="4" Padding="4">
+                <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="{DynamicResource Corner}" Padding="4">
                   <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
                 </Border>
               </Popup>
@@ -298,7 +311,7 @@
               <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover}" />
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
-              <Setter Property="Opacity" Value="0.35" />
+              <Setter Property="Opacity" Value="0.5" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -306,9 +319,7 @@
     </Setter>
   </Style>
 
-  <!-- The line at the foot of a menu that says why the ones above it are unavailable. It goes
-       away when there is nothing to explain: a row that is always greyed out reads as a command
-       that is broken rather than as a sentence. -->
+  <!-- The line at the foot of a menu that says why the items above it are unavailable. -->
   <Style x:Key="NoteItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
     <Setter Property="IsEnabled" Value="False" />
     <Style.Triggers>

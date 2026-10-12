@@ -8,17 +8,8 @@ using Oan.Core.Sizes;
 namespace Oan.App.ViewModels;
 
 /// <summary>
-/// Folder sizes for the rows of one listing: measured as you arrive, kept while you are there,
-/// and re-measured when the disk changes underneath them.
-///
-/// None of it is cheap, and none of it is guesswork — there is no way to know a folder's size
-/// without administrator, so this walks. Threaded, the whole user profile is 7.4 seconds and 1.1
-/// million files, D:\dev is half a second. See docs/folder-size-baseline.md.
-///
-/// That cost is why re-measuring is rationed by what the last measurement cost: a folder that
-/// took 20ms is refreshed almost as soon as it changes, and one that took six seconds is not
-/// touched again for two minutes however much it churns. Without that, watching a tree like
-/// AppData — which writes constantly — would put the walk in a permanent loop.
+/// Folder sizes for one listing's rows. Re-measuring is rationed by what the last walk cost, or a
+/// churning tree like AppData keeps the walk in a permanent loop. See docs/folder-size-baseline.md.
 /// </summary>
 public sealed class FolderSizesViewModel : Observable, IDisposable
 {
@@ -27,8 +18,7 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
 
     private static readonly TimeSpan Least = TimeSpan.FromSeconds(2);
 
-    /// <summary>How long a remembered size is shown without a second thought before it is quietly
-    /// checked again. Only matters for folders left behind, where nothing was watching.</summary>
+    /// <summary>How long a remembered size is shown before it is quietly checked again.</summary>
     private static readonly TimeSpan Trust = TimeSpan.FromSeconds(30);
 
     private readonly ConcurrentDictionary<string, EntryViewModel> _rows = new(StringComparer.OrdinalIgnoreCase);
@@ -43,32 +33,43 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
     private string _folder = "";
     private CancellationTokenSource? _deep;
     private SizeTree? _tree;
+    private bool _reading;
+    private int _found;
 
     public FolderSizesViewModel(Settings settings, Action remember)
     {
         _settings = settings;
         _remember = remember;
 
-        // Capacity well past a big listing: a cache smaller than the folder you are looking at
-        // evicts its own answers and re-walks them the moment you scroll back up.
+        // A cache smaller than the listing evicts its own answers and re-walks them on scroll.
         _queue = new SizeQueue(Measured, path => _rows.ContainsKey(path), capacity: 512);
         _changes = new FolderChanges(Changed);
         _retry = new Timer(_ => Changed([.. _stale.Keys]), null, Timeout.Infinite, Timeout.Infinite);
         _settle = new Timer(_ => OnDispatcher(() => Settled?.Invoke()), null, Timeout.Infinite, Timeout.Infinite);
     }
 
-    /// <summary>
-    /// Raised a moment after the last size landed. Sizes arrive long after the rows are in order,
-    /// so whoever put them in order has to be told it can do it again.
-    /// </summary>
+    /// <summary>Raised a moment after the last size landed, so the rows can be put in order again.</summary>
     public event Action? Settled;
 
-    /// <summary>
-    /// Everything under the folder on screen, or null while it is being read and whenever the map
-    /// is off. The walk is the expensive one — measured, 479ms for D:\dev and about 7s for the
-    /// whole profile — so it runs off the UI thread and is abandoned the moment you navigate.
-    /// </summary>
+    /// <summary>Everything under the folder on screen; null while it is being read or the map is off.</summary>
     public SizeTree? Tree { get => _tree; private set => Set(ref _tree, value); }
+
+    /// <summary>The tree is being walked. The map waits: a half-measured picture reads as a wrong answer.</summary>
+    public bool Reading
+    {
+        get => _reading;
+        private set
+        {
+            if (!Set(ref _reading, value)) return;
+
+            OnChanged(nameof(Ready));
+        }
+    }
+
+    public bool Ready => !_reading;
+
+    /// <summary>How many entries the walk has read. There is no total to count towards.</summary>
+    public string FoundText => _found == 0 ? "" : $"{_found:N0} items so far";
 
     /// <summary>Whether this listing's folders are measured at all. Remembered between runs.</summary>
     public bool On
@@ -82,16 +83,19 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
             OnChanged();
             _remember();
 
-            if (value) MeasureAll();
+            if (value)
+            {
+                _changes.Watch(_rows.Count > 0 ? _folder : null);
+                MeasureAll();
+            }
             else Forget();
+
+            // The map draws what the column measures, so the switch owns both.
+            Deepen();
         }
     }
 
-    /// <summary>
-    /// The listing now on screen. Replacing the map is also what abandons the previous folder's
-    /// queued work: the queue asks whether a path is still wanted before walking it, and paths
-    /// from a folder you have left are not.
-    /// </summary>
+    /// <summary>The listing now on screen. Replacing the rows abandons the previous folder's queued work.</summary>
     public void Show(string folder, IEnumerable<EntryViewModel> rows)
     {
         _folder = folder;
@@ -103,48 +107,66 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
             _rows[row.Entry.FullPath] = row;
         }
 
-        // Before anything is queued, because whoever called this is about to put the rows in
-        // order and an order decided on sizes nobody has painted yet is an order by nothing.
+        // Before anything is queued: the caller is about to sort, and needs the known sizes in place.
         Restore();
 
         _changes.Watch(On && _rows.Count > 0 ? folder : null);
         if (On) MeasureAll();
-
-        Deepen();
     }
 
     /// <summary>
-    /// Reads the whole tree for the folder on screen, if anything is going to draw it. Called
-    /// again when the map is switched on, because until then there was no reason to have paid
-    /// for it.
+    /// Reads the whole tree for the folder on screen. Not called from <see cref="Show"/>, which also
+    /// runs on every filter keystroke, and the walk is seconds long.
     /// </summary>
     public void Deepen()
     {
+        var wanted = On && _settings.Treemap ? _folder : "";
+
         _deep?.Cancel();
         _deep?.Dispose();
         _deep = null;
         Tree = null;
+        _found = 0;
+        OnChanged(nameof(FoundText));
+        Reading = wanted.Length > 0;
 
-        if (!On || !_settings.Treemap || _folder.Length == 0) return;
+        if (wanted.Length == 0) return;
 
         var stop = new CancellationTokenSource();
         _deep = stop;
-        var wanted = _folder;
 
         Task.Run(() =>
         {
             SizeTree? tree;
-            try { tree = SizeTree.Read(wanted, stop.Token); }
-            catch (OperationCanceledException) { return; }
+            try
+            {
+                tree = SizeTree.Read(wanted, stop.Token, Counted);
+            }
+            catch (OperationCanceledException)
+            {
+                // Another folder's walk owns the indicator now; do not turn it off here.
+                return;
+            }
 
             OnDispatcher(() =>
             {
-                // Still the folder that asked: navigating away while a walk is running is the
-                // normal case, and its answer belongs to a folder nobody is looking at.
-                if (!stop.IsCancellationRequested && _folder == wanted) Tree = tree;
+                // Navigating away while a walk is running is the normal case.
+                if (stop.IsCancellationRequested || _folder != wanted) return;
+
+                Tree = tree;
+                Reading = false;
             });
         }, CancellationToken.None);
     }
+
+    /// <summary>Raised on a walking thread.</summary>
+    private void Counted(int entries) => OnDispatcher(() =>
+    {
+        if (!Reading) return;
+
+        _found = entries;
+        OnChanged(nameof(FoundText));
+    });
 
     public void Dispose()
     {
@@ -156,12 +178,7 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
         _queue.Dispose();
     }
 
-    /// <summary>
-    /// Puts back what is already known, at no cost, and quietly queues a fresh walk for anything
-    /// known but going stale. Quietly matters: a row that already shows a number must not blink
-    /// back to an ellipsis every time you walk into the folder — the number is still true enough
-    /// to read while a better one is on its way.
-    /// </summary>
+    /// <summary>Puts back what is known and quietly re-queues what is going stale, without blanking the number.</summary>
     private void Restore()
     {
         foreach (var row in _rows.Values)
@@ -176,8 +193,6 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
 
     private void MeasureAll()
     {
-        _changes.Watch(_rows.Count > 0 ? _folder : null);
-
         foreach (var row in _rows.Values)
         {
             if (row.SortSize is null) Measure(row);
@@ -207,11 +222,7 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
     /// <summary>Arrives on a timer thread; null means the watcher lost events and gave up saying which.</summary>
     private void Changed(IReadOnlyCollection<string>? children) => OnDispatcher(() => Refresh(children));
 
-    /// <summary>
-    /// Both timers fire on a pool thread, and what they wake up reorders rows and redraws the
-    /// window. Sending it across here rather than at each subscriber means a subscriber cannot
-    /// forget — one of them called InvalidateVisual, which throws off the wrong thread.
-    /// </summary>
+    /// <summary>Both timers fire on a pool thread and what they wake touches the UI, so everything crosses here.</summary>
     private static void OnDispatcher(Action work)
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -229,9 +240,7 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
         {
             if (!_rows.TryGetValue(path, out var row)) continue;
 
-            // Still owed quiet: remember that it moved and come back for it. Dropping it here is
-            // what made a change during the quiet period vanish - nothing else was coming to say
-            // the folder had moved, so it stayed wrong until the cache let it go.
+            // Still owed quiet: remember that it moved and come back, or the change is lost.
             if (Rest(path) is { } left)
             {
                 _stale[path] = 0;
@@ -241,8 +250,6 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
 
             _stale.TryRemove(path, out _);
 
-            // Quietly: the row keeps the number it has until a better one arrives. A refresh is
-            // not a reason to make the column blink.
             Quietly(row);
         }
 
@@ -250,11 +257,7 @@ public sealed class FolderSizesViewModel : Observable, IDisposable
             _retry.Change(soonest + TimeSpan.FromMilliseconds(50), Timeout.InfiniteTimeSpan);
     }
 
-    /// <summary>
-    /// How much quiet a folder is still owed after its last walk, or null if it owes none. The
-    /// debt is what the walk cost: cheap folders are all but live, expensive ones refuse to be
-    /// asked again so soon however much they churn.
-    /// </summary>
+    /// <summary>How much quiet a folder is still owed: what its last walk cost times <see cref="Quiet"/>.</summary>
     private TimeSpan? Rest(string path)
     {
         if (!_last.TryGetValue(path, out var last)) return null;

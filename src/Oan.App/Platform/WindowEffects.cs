@@ -10,11 +10,7 @@ internal static class WindowEffects
     private const int DwmwaUseImmersiveDarkMode = 20;
     private const int DwmwaSystemBackdropType = 38;
 
-    /// <summary>
-    /// Asks DWM for the system backdrop. It needs Windows 11 22H2; earlier builds ignore the
-    /// attribute, so a false here means the caller must paint the window itself rather than
-    /// leave a transparent one with nothing behind it.
-    /// </summary>
+    /// <summary>Asks DWM for the system backdrop. Needs Windows 11 22H2; on false the caller must paint the window itself.</summary>
     public static bool TryBackdrop(Window window, Backdrop kind)
     {
         if (Environment.OSVersion.Version.Build < 22621) return false;
@@ -26,10 +22,8 @@ internal static class WindowEffects
         var type = kind switch { Backdrop.Mica => 2, Backdrop.Acrylic => 3, Backdrop.MicaAlt => 4, _ => 1 };
         if (DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref type, sizeof(int)) != 0) return false;
 
-        // The attribute alone gets you a black window. DWM draws the backdrop in the window's
-        // frame, and the frame is the title bar until it is extended over the client area; and
-        // WPF clears its own surface first, which is what the backdrop would be hiding behind.
-        // Both of these are measured: without either one the chrome composites to #000000.
+        // The attribute alone gets a black window (measured: #000000). The frame must be extended over the
+        // client area, and WPF must stop clearing its own surface.
         var glass = kind == Backdrop.Solid ? 0 : -1;
         var margins = new Margins { Left = glass, Right = glass, Top = glass, Bottom = glass };
         if (DwmExtendFrameIntoClientArea(hwnd, ref margins) != 0) return false;

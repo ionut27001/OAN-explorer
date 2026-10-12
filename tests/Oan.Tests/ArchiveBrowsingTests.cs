@@ -41,11 +41,17 @@ public class ArchiveBrowsingTests
     {
         // Waiting for it to happen, not timing it: on a busy machine the old two and a half
         // seconds was the difference between a green suite and a red one.
-        for (var i = 0; i < 600 && !vm.Archive.Active; i++) await Task.Delay(20);
+        //
+        // And waiting for the ROWS, not for the flag. Archive.Active is set inside OpenAsync,
+        // while the rows are put up by the continuation that runs after it returns - so a test
+        // that waited on the flag could read the listing that was still on screen, and did.
+        for (var i = 0; i < 600 && !(vm.Archive.Active && !vm.Busy); i++) await Task.Delay(20);
     }
 
     private static EntryViewModel Row(MainViewModel vm, string name) =>
-        vm.Rows.Single(r => r.Name == name);
+        vm.Rows.SingleOrDefault(r => r.Name == name)
+        ?? throw new InvalidOperationException(
+            $"no row '{name}'; the list holds: {string.Join(", ", vm.Rows.Select(r => r.Name))}");
 
     [Fact]
     public async Task Opening_an_archive_shows_what_is_at_its_top_level()
@@ -79,8 +85,12 @@ public class ArchiveBrowsingTests
         Assert.False(vm.DeleteCommand.CanExecute(null));
         Assert.False(vm.CutCommand.CanExecute(null));
 
-        // Copy stays on: taking something out is allowed, it is putting things in that is not.
-        Assert.True(vm.CopyCommand.CanExecute(null));
+        // Copy is off too, which it was not. The intention behind leaving it on was that taking
+        // something out is allowed - but nothing here takes anything out. The row's FullPath is
+        // the archive's path with the entry appended, so Copy put a path naming nothing on the
+        // real clipboard, and the failure arrived in whatever program pasted it. It goes back on
+        // when Copy extracts.
+        Assert.False(vm.CopyCommand.CanExecute(null));
     }
 
     [Fact]

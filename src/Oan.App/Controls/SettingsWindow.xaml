@@ -2,12 +2,14 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:pf="clr-namespace:Oan.App.Platform"
+        xmlns:vm="clr-namespace:Oan.App.ViewModels"
         Title="Settings" Width="520" Height="560" MinWidth="380" MinHeight="320"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="{DynamicResource WindowBg}" Foreground="{DynamicResource Fg}"
         FontFamily="Segoe UI" FontSize="13" TextOptions.TextFormattingMode="Display">
 
   <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="Show" />
     <Style x:Key="Section" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{DynamicResource FgMuted}" />
       <Setter Property="FontSize" Value="11" />
@@ -49,16 +51,20 @@
         <Border Style="{StaticResource Card}">
           <StackPanel>
             <TextBlock Text="WINDOW MATERIAL" Style="{StaticResource Section}" />
-            <RadioButton GroupName="Backdrop" Content="Mica" IsEnabled="{Binding Look.Supported}"
+            <RadioButton GroupName="Backdrop" Content="Mica" IsEnabled="{Binding Look.CanPickMaterial}"
                          IsChecked="{Binding Look.Backdrop, Converter={StaticResource Is}, ConverterParameter=Mica}" />
             <RadioButton GroupName="Backdrop" Content="Mica Alt — what Windows uses for tabbed windows"
-                         IsEnabled="{Binding Look.Supported}"
+                         IsEnabled="{Binding Look.CanPickMaterial}"
                          IsChecked="{Binding Look.Backdrop, Converter={StaticResource Is}, ConverterParameter=MicaAlt}" />
             <RadioButton GroupName="Backdrop" Content="Acrylic — blurs whatever is behind the window"
-                         IsEnabled="{Binding Look.Supported}"
+                         IsEnabled="{Binding Look.CanPickMaterial}"
                          IsChecked="{Binding Look.Backdrop, Converter={StaticResource Is}, ConverterParameter=Acrylic}" />
             <RadioButton GroupName="Backdrop" Content="Solid"
                          IsChecked="{Binding Look.Backdrop, Converter={StaticResource Is}, ConverterParameter=Solid}" />
+            <CheckBox Content="Glass: the window as separate slabs" IsChecked="{Binding Look.Glass}" Margin="0,12,0,0"
+                      IsEnabled="{Binding Look.Supported}" />
+            <TextBlock Style="{StaticResource Note}"
+                       Text="Each bar and pane becomes its own piece of acrylic with a lit, tinted edge, and what is between them is really a gap: the desktop shows through and can be clicked. Uses acrylic whatever is chosen above." />
             <TextBlock Text="{Binding Look.Note}">
               <TextBlock.Style>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource Note}">
@@ -71,6 +77,25 @@
                 </Style>
               </TextBlock.Style>
             </TextBlock>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="THEME" Style="{StaticResource Section}" />
+            <ItemsControl ItemsSource="{Binding Look.Themes}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <RadioButton GroupName="Theme" Content="{Binding Label}" IsChecked="{Binding Current, Mode=OneWay}"
+                               Command="{Binding DataContext.Look.ChooseThemeCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                               CommandParameter="{Binding Name}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="Open themes folder" Command="{Binding Look.OpenThemesCommand}" HorizontalAlignment="Left"
+                    Padding="16,5" Margin="0,10,0,0" Style="{StaticResource ToolButton}" />
+            <TextBlock Style="{StaticResource Note}" Margin="0,10,0,0"
+                       Text="A theme is a .json file of colours in that folder. Example.json lists every colour there is with the value it has now: copy it, rename it, change what you like." />
           </StackPanel>
         </Border>
 
@@ -102,6 +127,24 @@
                       IsEnabled="{Binding FolderSizes.On}" />
             <TextBlock Style="{StaticResource Note}"
                        Text="Draws those sizes as areas, biggest first. It needs them, so it is off when they are." />
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}">
+          <Border.DataContext>
+            <vm:SevenZipViewModel />
+          </Border.DataContext>
+          <StackPanel>
+            <TextBlock Text="ARCHIVES" Style="{StaticResource Section}" />
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+            <Button Content="Install 7-Zip" Command="{Binding InstallCommand}" HorizontalAlignment="Left"
+                    Padding="16,5" Margin="0,10,0,0" Style="{StaticResource ToolButton}"
+                    Visibility="{Binding Missing, Converter={StaticResource Show}}" />
+            <TextBlock Style="{StaticResource Note}" Margin="0,10,0,0"
+                       Visibility="{Binding Missing, Converter={StaticResource Show}}"
+                       Text="Free and open source, from 7-zip.org, fetched by winget. OAN uses the one you install and ships none of its own." />
+            <TextBlock Text="{Binding Note}" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource Warning}"
+                       Visibility="{Binding HasNote, Converter={StaticResource Show}}" />
           </StackPanel>
         </Border>
 

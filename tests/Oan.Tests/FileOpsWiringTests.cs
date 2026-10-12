@@ -106,6 +106,34 @@ public class FileOpsWiringTests
         Assert.Null(ops.Last);
     }
 
+    [Fact]
+    public async Task A_drop_onto_a_folder_in_the_listing_goes_into_that_folder()
+    {
+        var (vm, ops, temp) = await Window();
+        using var _ = temp;
+        var into = temp.AddFolder("invoices");
+
+        vm.Drop([Path.Combine(temp.Root, "a.txt")], move: true, into);
+        await Settle(ops);
+
+        Assert.Equal(OperationKind.Move, ops.Last!.Kind);
+        Assert.Equal(into, ops.Last.Destination);
+        Assert.Equal([Path.Combine(temp.Root, "a.txt")], ops.Last.Sources);
+    }
+
+    [Fact]
+    public async Task A_drop_of_a_folder_onto_itself_is_still_not_an_operation()
+    {
+        var (vm, ops, temp) = await Window();
+        using var _ = temp;
+        var folder = temp.AddFolder("invoices");
+
+        vm.Drop([folder], move: true, folder);
+        await Task.Delay(150);
+
+        Assert.Null(ops.Last);
+    }
+
     private static async Task<(MainViewModel Vm, Records Ops, TempFolder Temp)> Window()
     {
         var temp = new TempFolder();

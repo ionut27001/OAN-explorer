@@ -12,6 +12,9 @@ public sealed record FileEntry
 
     public DateTime? Modified { get; init; }
 
+    /// <summary>Null where the source does not say: an archive entry, a search hit.</summary>
+    public DateTime? Created { get; init; }
+
     public bool IsDirectory => (Attributes & FileAttributes.Directory) != 0;
     public bool IsHidden => (Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0;
 

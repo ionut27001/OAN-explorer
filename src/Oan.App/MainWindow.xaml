@@ -6,14 +6,12 @@
         xmlns:pf="clr-namespace:Oan.App.Platform"
         Title="OAN" Width="1120" Height="700" MinWidth="700" MinHeight="420"
         Background="{DynamicResource WindowBg}" Foreground="{DynamicResource Fg}"
-        FontFamily="Segoe UI" FontSize="13" TextOptions.TextFormattingMode="Display"
+        FontFamily="{DynamicResource UiFont}" FontSize="{DynamicResource UiFontSize}" TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True" PreviewKeyDown="OnWindowKeyDown">
 
-  <!-- The tab strip lives IN the title bar, where Explorer puts it. Below it, the strip had to
-       appear and disappear with the tab count and the whole page shifted when it did.
-       CaptionHeight is the band that still drags the window; anything clickable inside it opts
-       out with IsHitTestVisibleInChrome. GlassFrameThickness stays 0 so the client area is ours
-       and the Mica behind it is not painted over. -->
+  <!-- The tab strip lives in the title bar. CaptionHeight is the band that drags the window; anything
+       clickable inside it opts out with IsHitTestVisibleInChrome. GlassFrameThickness stays 0 so the
+       client area is ours and the Mica behind it is not painted over. -->
   <WindowChrome.WindowChrome>
     <WindowChrome CaptionHeight="36" ResizeBorderThickness="6" CornerRadius="0"
                   GlassFrameThickness="0" UseAeroCaptionButtons="False" />
@@ -23,36 +21,13 @@
     <BooleanToVisibilityConverter x:Key="Show" />
 
 
-    <!-- The icon is sized explicitly rather than by the bitmap: a 256px request can legitimately
-         come back as a cropped 48px image, and a tile that sized itself would then be a small
-         icon standing next to large ones. -->
-    <DataTemplate x:Key="TileTemplate">
-      <StackPanel x:Name="Tile" Margin="4,8,4,0">
-        <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality"
-               Width="{Binding DataContext.Look.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}"
-               Height="{Binding DataContext.Look.IconSize, RelativeSource={RelativeSource AncestorType=ListView}}" />
-        <TextBlock Text="{Binding Name}" Margin="2,6,2,0" MaxHeight="34"
-                   TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
-      </StackPanel>
-      <DataTemplate.Triggers>
-        <DataTrigger Binding="{Binding IsHidden}" Value="True">
-          <Setter TargetName="Tile" Property="Opacity" Value="0.55" />
-        </DataTrigger>
-      </DataTemplate.Triggers>
-    </DataTemplate>
-
-    <ItemsPanelTemplate x:Key="TilePanel">
-      <ctl:VirtualizingWrapPanel ItemWidth="{Binding Look.TileWidth}" ItemHeight="{Binding Look.TileHeight}" />
-    </ItemsPanelTemplate>
-
-    <!-- Container style and panel switch together, set here rather than on the ListView because a
-         local value on the element would outrank the trigger. The View is the exception: it is
-         assigned in code-behind, because a ListView rejects a GridView that is already in use and
-         a style re-applies its value whenever a trigger re-evaluates. -->
+    <!-- Set in a style because a local value on the element would outrank the trigger. The View is the
+         exception: a ListView rejects a GridView already in use, so it is assigned in code-behind. -->
     <Style x:Key="FileList" TargetType="ListView">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="ItemContainerStyle" Value="{StaticResource Row}" />
+      <Setter Property="ItemsPanel" Value="{StaticResource RowPanel}" />
       <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
       <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
       <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
@@ -66,11 +41,14 @@
           <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Standard" />
           <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         </DataTrigger>
+        <!-- After the one above, so it wins: that trigger fires for the list too. -->
+        <DataTrigger Binding="{Binding Look.IsList}" Value="True">
+          <Setter Property="ItemTemplate" Value="{StaticResource ListTemplate}" />
+        </DataTrigger>
       </Style.Triggers>
     </Style>
 
-    <!-- Sits inside the search box. It clears the kind filter as well, because one control that
-         says "clear" and leaves half the items hidden is worse than no control at all. -->
+    <!-- Sits inside the search box. It clears the kind filter as well. -->
     <Style x:Key="ClearButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
       <Setter Property="Width" Value="24" />
       <Setter Property="Height" Value="24" />
@@ -105,15 +83,15 @@
     </Style>
   </Window.Resources>
 
-  <!-- Window scope for everything a text box does not already claim, so the toolbar tooltips
-       are true wherever the focus happens to be. The rest stay on the list, where Delete and
-       Enter mean the selection and not the text being typed. -->
+  <!-- Window scope for everything a text box does not already claim. The rest stay on the list, where
+       Delete and Enter mean the selection and not the text being typed. -->
   <Window.InputBindings>
     <KeyBinding Key="Left" Modifiers="Alt" Command="{Binding BackCommand}" />
     <KeyBinding Key="Right" Modifiers="Alt" Command="{Binding ForwardCommand}" />
     <KeyBinding Key="Up" Modifiers="Alt" Command="{Binding UpCommand}" />
     <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
     <KeyBinding Key="C" Modifiers="Control" Command="{Binding CopyCommand}" />
+    <KeyBinding Key="C" Modifiers="Control+Shift" Command="{Binding CopyPathCommand}" />
     <KeyBinding Key="X" Modifiers="Control" Command="{Binding CutCommand}" />
     <KeyBinding Key="V" Modifiers="Control" Command="{Binding PasteCommand}" />
     <KeyBinding Key="N" Modifiers="Control+Shift" Command="{Binding NewFolderCommand}" />
@@ -123,11 +101,15 @@
     <KeyBinding Key="Tab" Modifiers="Control+Shift" Command="{Binding Tabs.PreviousTabCommand}" />
   </Window.InputBindings>
 
-  <DockPanel>
+  <Grid>
+  <!-- A theme's picture. Behind everything, and seen only through colours the theme made translucent. -->
+  <Image x:Name="Wallpaper" IsHitTestVisible="False" Visibility="Collapsed" />
 
-    <ctl:TitleBar DockPanel.Dock="Top" />
+  <DockPanel x:Name="Frame">
 
-    <Border DockPanel.Dock="Top" Padding="8,8,8,4" Style="{StaticResource ChromeBar}">
+    <ctl:TitleBar x:Name="TopBar" DockPanel.Dock="Top" />
+
+    <Border x:Name="AddressBar" DockPanel.Dock="Top" Padding="8,8,8,4" Style="{StaticResource ChromeBar}">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
@@ -154,7 +136,8 @@
                 Background="{DynamicResource FieldBg}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="1" MouseLeftButtonDown="OnAddressBarClick">
           <Grid>
-            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+            <!-- Not focusable: a ScrollViewer that takes focus from a click marks it handled, and the bar never hears it. -->
+            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False">
               <ItemsControl ItemsSource="{Binding Crumbs}" Margin="2,0" HorizontalAlignment="Left">
                 <ItemsControl.Style>
                   <Style TargetType="ItemsControl">
@@ -213,9 +196,7 @@
           <TextBox x:Name="SearchBox" Height="30" AutomationProperties.Name="Search this folder"
                    Padding="10,0,28,0"
                    Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=120}">
-            <!-- Typing filters what is already loaded; Enter walks the tree. The two are
-                 different questions and the placeholder says so, because a box labelled
-                 "search" that only hides loaded rows is the reason this was reported broken. -->
+            <!-- Typing filters what is already loaded; Enter walks the tree. -->
             <TextBox.InputBindings>
               <KeyBinding Key="Enter" Command="{Binding SearchCommand}" />
               <KeyBinding Key="Escape" Command="{Binding EndSearchCommand}" />
@@ -272,36 +253,25 @@
       </Grid>
     </Border>
 
-    <ctl:Toolbar DockPanel.Dock="Top" />
+    <ctl:Toolbar x:Name="Tools" DockPanel.Dock="Top" />
 
-    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
-            Padding="12,6" Style="{StaticResource ChromeBar}">
-      <DockPanel>
-        <TextBlock DockPanel.Dock="Right" Text="{Binding Places.FreeText}" Foreground="{DynamicResource FgMuted}" />
-        <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource FgMuted}" />
-        <TextBlock Text="{Binding WarningText}" Margin="16,0,16,0" Foreground="{DynamicResource Warning}"
-                   TextTrimming="CharacterEllipsis" />
-      </DockPanel>
-    </Border>
+    <ctl:StatusLine x:Name="StatusBar" DockPanel.Dock="Bottom" />
 
     <Grid x:Name="Body" SizeChanged="OnBodySizeChanged">
       <Grid.ColumnDefinitions>
         <ColumnDefinition x:Name="SidebarColumn" Width="220" MinWidth="150" />
         <ColumnDefinition Width="Auto" />
-        <!-- No MinWidth here: a minimum on both sides means neither can yield, and the grid
-             answers by overflowing the window. The list's floor is enforced in code instead,
-             against the width the window actually has. -->
+        <!-- No MinWidth here: a minimum on both sides means neither can yield, and the grid overflows
+             the window. The list's floor is enforced in code instead. -->
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
 
-      <ctl:Sidebar />
+      <ctl:Sidebar x:Name="Side" />
 
-      <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource Surface}"
+      <GridSplitter x:Name="SideSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource Surface}"
                     DragCompleted="OnSplitterDragged" />
 
-      <!-- The page: the same sheet as the bars and the selected tab. Only the line down its left
-           edge is left, because there is no longer a colour difference to separate the two panes. -->
-      <Border Grid.Column="2" Background="{DynamicResource Surface}" ClipToBounds="True"
+      <Border x:Name="Page" Grid.Column="2" Background="{DynamicResource Surface}" ClipToBounds="True"
               BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
         <Grid>
           <Grid.RowDefinitions>
@@ -312,9 +282,29 @@
 
           <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="Transparent"
                         Visibility="{Binding Look.Treemap, Converter={StaticResource Show}}" />
-          <ctl:TreemapView x:Name="Map" Grid.Row="2" Rows="{Binding Rows}"
-                           Tree="{Binding FolderSizes.Tree}"
-                           Visibility="{Binding Look.Treemap, Converter={StaticResource Show}}" />
+          <Grid Grid.Row="2" Visibility="{Binding Look.Treemap, Converter={StaticResource Show}}">
+            <ctl:TreemapView x:Name="Map" Rows="{Binding Rows}" Tree="{Binding FolderSizes.Tree}"
+                             Visibility="{Binding FolderSizes.Ready, Converter={StaticResource Show}}" />
+
+            <!-- Shown while the tree is walked, instead of a half-drawn map. Indeterminate: there is no total. -->
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Visibility="{Binding FolderSizes.Reading, Converter={StaticResource Show}}">
+              <TextBlock Text="Measuring this folder…" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource FgMuted}" />
+              <ProgressBar IsIndeterminate="True" Width="240" Height="3" Margin="0,10"
+                           BorderThickness="0" Background="{DynamicResource Hover}"
+                           Foreground="{DynamicResource Selected}" />
+              <TextBlock Text="{Binding FolderSizes.FoundText}" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource FgMuted}" />
+            </StackPanel>
+
+            <!-- On its own plate because it sits over the tiles, whose colours it cannot choose. -->
+            <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,5,6,0"
+                    Width="22" Height="22" Style="{StaticResource IconButton}"
+                    Background="#8C000000" Click="OnCloseMapClick" ToolTip="Hide the size map">
+              <TextBlock Style="{StaticResource Glyph}" Text="&#xE8BB;" FontSize="10" Foreground="White" />
+            </Button>
+          </Grid>
 
           <ListView x:Name="List" ItemsSource="{Binding Rows}" Style="{StaticResource FileList}"
                     SelectionMode="Extended"
@@ -328,12 +318,14 @@
                     MouseDown="OnListMiddleDown"
                     ContextMenuOpening="OnListContextMenuOpening"
                     DragOver="OnListDragOver"
+                    DragLeave="OnListDragLeave"
                     Drop="OnListDrop"
                     GridViewColumnHeader.Click="OnHeaderClick">
 
             <ListView.InputBindings>
               <KeyBinding Key="F2" Command="{Binding RenameCommand}" />
               <KeyBinding Key="Delete" Command="{Binding DeleteCommand}" />
+              <KeyBinding Key="D" Modifiers="Control" Command="{Binding DeleteCommand}" />
               <KeyBinding Key="Delete" Modifiers="Shift" Command="{Binding DeletePermanentlyCommand}" />
               <KeyBinding Key="Enter" Command="{Binding OpenSelectionCommand}" />
               <KeyBinding Key="Back" Command="{Binding UpCommand}" />
@@ -342,29 +334,24 @@
             <ListView.ContextMenu>
               <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                 <MenuItem Header="Open" Command="{Binding OpenSelectionCommand}" InputGestureText="Enter" />
-                <!-- Mount is OAN's own, through the VirtDisk API: no shell extension is loaded,
-                     which is the whole reason this menu exists on this machine. -->
+                <!-- Mount is OAN's own, through the VirtDisk API: no shell extension is loaded. -->
                 <MenuItem Header="{Binding Mounts.MountHeader}" Command="{Binding Mounts.MountCommand}"
                           Visibility="{Binding Mounts.ShowMount, Converter={StaticResource Show}}" />
                 <Separator />
                 <MenuItem Header="Cut" Command="{Binding CutCommand}" InputGestureText="Ctrl+X" />
                 <MenuItem Header="Copy" Command="{Binding CopyCommand}" InputGestureText="Ctrl+C" />
+                <MenuItem Header="Copy as path" Command="{Binding CopyPathCommand}" InputGestureText="Ctrl+Shift+C" />
                 <MenuItem Header="Paste" Command="{Binding PasteCommand}" InputGestureText="Ctrl+V" />
+                <Separator />
+                <MenuItem Header="Extract to a folder" Command="{Binding ExtractCommand}" />
+                <MenuItem Header="Compress to zip" Command="{Binding CompressCommand}" />
                 <Separator />
                 <MenuItem Header="Rename" Command="{Binding RenameCommand}" InputGestureText="F2" />
                 <MenuItem Header="Delete" Command="{Binding DeleteCommand}" InputGestureText="Del" />
                 <MenuItem Header="Delete permanently" Command="{Binding DeletePermanentlyCommand}" InputGestureText="Shift+Del" />
                 <Separator />
-                <MenuItem Header="New" ItemsSource="{Binding NewItems}">
-                  <MenuItem.ItemContainerStyle>
-                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                      <Setter Property="Header" Value="{Binding Label}" />
-                      <Setter Property="InputGestureText" Value="{Binding Gesture}" />
-                      <Setter Property="Command" Value="{Binding Command}" />
-                      <Setter Property="CommandParameter" Value="{Binding}" />
-                    </Style>
-                  </MenuItem.ItemContainerStyle>
-                </MenuItem>
+                <MenuItem Header="New" ItemsSource="{Binding NewItems}"
+                          ItemContainerStyle="{StaticResource NewEntry}" />
                 <Separator />
                 <MenuItem Header="Properties" Click="OnPropertiesClick" IsEnabled="{Binding HasSelection}" />
               </ContextMenu>
@@ -390,4 +377,5 @@
       </Border>
     </Grid>
   </DockPanel>
+  </Grid>
 </Window>

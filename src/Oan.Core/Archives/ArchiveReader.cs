@@ -1,21 +1,10 @@
 namespace Oan.Core.Archives;
 
-/// <summary>
-/// Reads what is inside an archive, and writes it out again.
-///
-/// A file manager that cannot look inside a zip is leaning on somebody else's program to do its
-/// job — which on this machine means a shell extension, in Explorer's process, hanging it.
-/// Nothing here shells out: zip comes from the framework, the rest from a managed library.
-///
-/// The whole file is attacker-controlled input. Nothing an entry says about where it wants to
-/// go is believed; see <see cref="SafeEntryPath"/> and <see cref="ArchiveExtraction"/>.
-/// </summary>
+/// <summary>Reads what is inside an archive, and writes it out again, without shelling out. The whole file is attacker-controlled input:
+/// see <see cref="SafeEntryPath"/> and <see cref="ArchiveExtraction"/>.</summary>
 public static class ArchiveReader
 {
-    /// <summary>
-    /// What the file is, by the bytes at the front of it. Not by the extension: renaming an
-    /// installer to .zip does not make it one, and naming a zip .dat does not hide it.
-    /// </summary>
+    /// <summary>What the file is, by the bytes at the front of it, not by the extension.</summary>
     public static ArchiveKind Detect(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return ArchiveKind.None;
@@ -27,7 +16,10 @@ public static class ArchiveReader
             // 262 because tar's magic is not at the front: "ustar" sits at offset 257.
             Span<byte> head = stackalloc byte[262];
             var read = file.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
-            return Sniff(head[..read]);
+            var kind = Sniff(head[..read]);
+            return kind is ArchiveKind.None && SevenZipOnly.Contains(Path.GetExtension(path)) && SevenZipLibrary.Instance is not null
+                ? ArchiveKind.Other
+                : kind;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -35,19 +27,47 @@ public static class ArchiveReader
         }
     }
 
-    public static Task<ArchiveListing> ListAsync(string path, ArchiveLimits? limits = null, CancellationToken ct = default) =>
-        Task.Run(() => List(path, limits ?? new ArchiveLimits(), ct), ct);
+    /// <summary>What <see cref="Detect"/> would most likely say, from the name alone: for a menu or a command's state, which must not wait on the disk.
+    /// Extracting still reads the bytes, and says so when the name was wrong.</summary>
+    public static bool IsArchiveName(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return Named.Contains(extension) || (SevenZipOnly.Contains(extension) && SevenZipLibrary.Instance is not null);
+    }
 
-    /// <summary>
-    /// Writes <paramref name="entries"/> — or everything, when it is null — into
-    /// <paramref name="destination"/>. Names are matched exactly as
-    /// <see cref="ArchiveListing"/> reports them; naming a folder does not imply what is under it.
-    /// </summary>
+    /// <summary>The names the kinds <see cref="Sniff"/> knows go by. Documents that are zips inside (.docx, .epub) are left out.</summary>
+    private static readonly HashSet<string> Named = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".zip", ".zipx", ".jar", ".7z", ".rar", ".tar", ".gz", ".gzip", ".tgz", ".bz2", ".tbz", ".tbz2", ".tb2", ".xz", ".txz",
+        ".cbz", ".cbr", ".cb7", ".cbt",
+    };
+
+    /// <summary>What only 7-Zip reads, and OAN steps into on a double-click. A list on purpose: the DLL also "opens" .exe, .msi and .doc,
+    /// which must keep meaning run, install and edit. Disk images are left to the mount.</summary>
+    private static readonly HashSet<string> SevenZipOnly = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".001", ".arj", ".cab", ".chm", ".cpio", ".deb", ".dmg", ".esd", ".lha", ".lzh", ".lzma",
+        ".rpm", ".squashfs", ".swm", ".wim", ".xar", ".z", ".zst", ".tzst",
+    };
+
+    /// <summary>The 7z.dll in use, or null when there is none and the managed readers work alone.</summary>
+    public static string? SevenZipPath => SevenZipLibrary.Instance?.Location;
+
+    /// <summary>For when 7-Zip was installed while OAN was running.</summary>
+    public static void FindSevenZipAgain() => SevenZipLibrary.LookAgain();
+
+    public static Task<ArchiveListing> ListAsync(string path, ArchiveLimits? limits = null,
+        string? password = null, CancellationToken ct = default) =>
+        Task.Run(() => List(path, limits ?? new ArchiveLimits(), password, ct), ct);
+
+    /// <summary>Writes <paramref name="entries"/>, or everything when null, into <paramref name="destination"/>.
+    /// Names match exactly as <see cref="ArchiveListing"/> reports them; a folder does not imply what is under it.</summary>
     public static Task<ExtractResult> ExtractAsync(string path, string destination,
-        IReadOnlyList<string>? entries = null, ArchiveLimits? limits = null, CancellationToken ct = default) =>
-        Task.Run(() => Extract(path, destination, entries, limits ?? new ArchiveLimits(), ct), ct);
+        IReadOnlyList<string>? entries = null, ArchiveLimits? limits = null,
+        string? password = null, CancellationToken ct = default) =>
+        Task.Run(() => Extract(path, destination, entries, limits ?? new ArchiveLimits(), password, ct), ct);
 
-    private static ArchiveListing List(string path, ArchiveLimits limits, CancellationToken ct)
+    private static ArchiveListing List(string path, ArchiveLimits limits, string? password, CancellationToken ct)
     {
         var kind = Detect(path);
         if (kind is ArchiveKind.None) return ArchiveListing.Failed(path, NotAnArchive(path));
@@ -56,18 +76,22 @@ public static class ArchiveReader
 
         var entries = new List<ArchiveEntry>();
         string? error;
+        var locked = false;
         try
         {
-            error = ArchiveSource.Open(path, kind, source => Collect(source, entries, limits.MaxEntries, ct));
+            error = ArchiveSource.Open(path, kind, password, source => Collect(source, entries, limits.MaxEntries, ct));
+        }
+        catch (PasswordNeededException e)
+        {
+            (error, locked) = (e.Message, true);
         }
         catch (Exception e) when (ArchiveSource.Recoverable(e))
         {
-            // Whatever was read before it went wrong is kept: a truncated archive shows what it
-            // had and still says, through Error, that this is not all of it.
+            // Whatever was read before it went wrong is kept; Error says this is not all of it.
             error = Unreadable(e);
         }
 
-        return new ArchiveListing { Path = path, Kind = kind, Entries = entries, Error = error };
+        return new ArchiveListing { Path = path, Kind = kind, Entries = entries, Error = error, NeedsPassword = locked };
     }
 
     private static string? Collect(IEnumerable<SourceEntry> source, List<ArchiveEntry> into, int max, CancellationToken ct)
@@ -94,7 +118,7 @@ public static class ArchiveReader
     }
 
     private static ExtractResult Extract(string path, string destination, IReadOnlyList<string>? entries,
-        ArchiveLimits limits, CancellationToken ct)
+        ArchiveLimits limits, string? password, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(destination))
             return ExtractResult.Failed(destination ?? "", "No destination folder was given.");
@@ -117,9 +141,13 @@ public static class ArchiveReader
 
         try
         {
-            var archiveBytes = new FileInfo(path).Length;
-            return ArchiveSource.Open(path, kind,
-                source => ArchiveExtraction.Run(source, root, entries, limits, archiveBytes, ct));
+            var run = new ArchiveExtraction(root, entries, limits, new FileInfo(path).Length);
+            ArchiveSource.Extract(path, kind, password, run, ct);
+            return run.Result();
+        }
+        catch (PasswordNeededException e)
+        {
+            return ExtractResult.Failed(root, e.Message) with { NeedsPassword = true };
         }
         catch (Exception e) when (ArchiveSource.Recoverable(e))
         {

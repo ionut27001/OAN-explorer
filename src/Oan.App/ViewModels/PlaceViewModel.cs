@@ -14,11 +14,7 @@ public sealed class PlaceViewModel(Place place) : Observable
     private bool _isCurrent;
     private string? _image;
 
-    /// <summary>
-    /// True while the list is showing this place. Matched on the path, and by prefix for a
-    /// drive: standing in C:\Users\oance is standing on C:, and an exact match would leave the
-    /// sidebar looking as if nothing were selected almost always.
-    /// </summary>
+    /// <summary>True while the list is showing this place. By prefix for a drive: anywhere on C: is standing on C:.</summary>
     public bool IsCurrent { get => _isCurrent; private set => Set(ref _isCurrent, value); }
 
     public void Track(string? currentPath)
@@ -37,12 +33,7 @@ public sealed class PlaceViewModel(Place place) : Observable
                 StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// The shell's own icon for this place, which is the whole point: Desktop, Downloads,
-    /// Documents, Pictures, Music and Videos each have one in Windows, and a folder someone gave
-    /// a custom icon has one too. Drawing the same folder glyph for all of them threw that away.
-    /// Requested on first bind and arriving later, like a row's; until then the glyph shows.
-    /// </summary>
+    /// <summary>The shell's own icon for this place, arriving later; until then the glyph shows.</summary>
     public ImageSource? Icon
     {
         get
@@ -76,23 +67,13 @@ public sealed class PlaceViewModel(Place place) : Observable
     public double? UsedFraction => place.UsedFraction;
 
     /// <summary>
-    /// Under a tenth left, which is where Windows itself turns the bar red. A flat fraction
-    /// rather than a fixed number of gigabytes, because that is Explorer's rule and a sidebar
-    /// disagreeing with the window next to it would just look wrong.
-    ///
-    /// Said in whole bytes rather than as a fraction: exactly a tenth left is not yet a warning,
-    /// and deciding that on doubles puts the boundary on whichever way 0.9 happens to round.
+    /// Under a tenth left, which is where Explorer turns the bar red. In whole bytes: on doubles the boundary
+    /// would land on whichever way 0.9 happens to round.
     /// </summary>
     public bool NearlyFull =>
         place.TotalBytes is { } total && total > 0 && place.FreeBytes is { } free && free * 10 < total;
 
-    /// <summary>
-    /// Drives: "85.0 GB free of 465 GB". A drive that is not ready knows neither number.
-    ///
-    /// A nearly full drive says so in words as well as in the red bar. This file already argues,
-    /// about the current-place mark, that a signal needs a second half which survives for someone
-    /// who cannot tell two hues apart; a bar whose only difference is its colour fails that.
-    /// </summary>
+    /// <summary>"85.0 GB free of 465 GB". A nearly full drive says so in words too, not by the bar's colour alone.</summary>
     public string CapacityText => place.IsOptical
         ? place.TotalBytes is { } bytes ? $"disc image, {Format.Size(bytes)}" : "disc image"
         : NearlyFull

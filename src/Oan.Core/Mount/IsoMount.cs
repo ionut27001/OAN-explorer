@@ -2,16 +2,10 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Oan.Core.Mount;
 
-/// <summary>
-/// One image OAN has attached. <see cref="DriveLetter"/> is null when it could not be
-/// determined — the image is mounted either way.
-/// </summary>
+/// <summary>One image OAN has attached. <see cref="DriveLetter"/> is null when it could not be determined.</summary>
 public sealed record MountedImage(string IsoPath, string? DriveLetter, string? PhysicalPath);
 
-/// <summary>
-/// What one mount attempt did. <see cref="Error"/> is null on success and carries the reason
-/// otherwise; <see cref="DriveLetter"/> is null when it could not be determined.
-/// </summary>
+/// <summary>What one mount attempt did. <see cref="Error"/> is null on success.</summary>
 public sealed record MountResult
 {
     public required string IsoPath { get; init; }
@@ -24,20 +18,11 @@ public sealed record MountResult
     public static MountResult Refused(string isoPath, string why) => new() { IsoPath = isoPath, Error = why };
 }
 
-/// <summary>
-/// Mounts disk images through the VirtDisk API, so opening an ISO never runs a third-party
-/// shell extension.
-///
-/// Only images this instance attached can be ejected through it. That is not a policy check
-/// that could be argued with — a detach needs the handle the attach returned, and those are
-/// the only handles here. This machine already has a virtual disk attached that Bitdefender
-/// owns; unmounting the user's security software is the failure this shape rules out.
-/// </summary>
+/// <summary>Mounts disk images through the VirtDisk API, so opening an ISO never runs a third-party shell extension.
+/// Only images this instance attached can be ejected: a detach needs the handle the attach returned.</summary>
 public sealed class IsoMount : IDisposable
 {
-    /// <summary>How long to wait for the volume to surface with a drive letter before reporting
-    /// null: the attach returns before the volume appears. One number, because there has only
-    /// ever been one — a constructor argument nobody passes is a decision nobody made.</summary>
+    /// <summary>How long to wait for a drive letter: the attach returns before the volume appears.</summary>
     private static readonly TimeSpan LetterDeadline = TimeSpan.FromSeconds(5);
 
     private readonly Dictionary<string, Attachment> _mounted = new(StringComparer.OrdinalIgnoreCase);
@@ -61,8 +46,7 @@ public sealed class IsoMount : IDisposable
         Attachment[] ours;
         lock (_mounted)
         {
-            // Without this, a mount still inside the wait for a letter when the window closes
-            // finishes afterwards, stores itself here, and is never ejected by anybody.
+            // A mount still waiting for its letter when the window closes must not store itself afterwards.
             _disposed = true;
             ours = [.. _mounted.Values];
             _mounted.Clear();
@@ -80,8 +64,6 @@ public sealed class IsoMount : IDisposable
         lock (_mounted)
         {
             // Measured: a second attach of the same image succeeds, with a second drive letter.
-            // Nothing in Windows stops it, so the answer to "mount this again" is the mount
-            // we already have.
             if (_mounted.TryGetValue(path, out var already)) return already.Refreshed();
         }
 
@@ -126,13 +108,8 @@ public sealed class IsoMount : IDisposable
             if (!_mounted.TryGetValue(path, out ours)) return "OAN did not mount that image, so it will not eject it";
         }
 
-        // Measured: ejecting with a file still open on the volume succeeds. There is no state
-        // to refuse on here.
-        //
-        // Looked up rather than removed: a refused detach leaves the image attached, and an entry
-        // dropped before the answer came back would be a drive still on the machine that OAN has
-        // forgotten — listed in the sidebar, and answered with "OAN did not mount that image"
-        // when the user presses Eject again.
+        // Measured: ejecting with a file still open on the volume succeeds.
+        // Looked up, not removed: a refused detach leaves the image attached, and OAN must not forget it.
         if (Eject(ours) is { } why) return why;
 
         lock (_mounted) _mounted.Remove(path);
@@ -161,12 +138,8 @@ public sealed class IsoMount : IDisposable
         }
     }
 
-    /// <summary>
-    /// Closing the handle would detach on its own; the explicit call is what turns a refusal into
-    /// a reported reason instead of a silent one. Which is also why the handle survives a refusal:
-    /// closing it there would detach the image anyway — see VirtDisk.Attach on the lifetime — and
-    /// the caller would have been told the eject did not happen while it quietly did.
-    /// </summary>
+    /// <summary>Closing the handle would detach on its own; the explicit call turns a refusal into a reported reason.
+    /// The handle survives a refusal, because closing it would detach the image anyway.</summary>
     private static string? Eject(Attachment mount)
     {
         var rc = VirtDisk.Detach(mount.Handle);
@@ -176,8 +149,7 @@ public sealed class IsoMount : IDisposable
         return null;
     }
 
-    /// <summary>Eject, for an attachment nobody is going to retry: the handle goes whatever the
-    /// detach said, because holding it open is what would leave the image on the machine.</summary>
+    /// <summary>Eject for an attachment nobody will retry: the handle goes whatever the detach said.</summary>
     private static void Discard(Attachment mount)
     {
         Eject(mount);

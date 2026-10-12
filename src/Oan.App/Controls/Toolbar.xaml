@@ -4,7 +4,8 @@
              xmlns:vm="clr-namespace:Oan.App.ViewModels"
              xmlns:pf="clr-namespace:Oan.App.Platform">
 
-  <Border Padding="8,0,8,8" Style="{StaticResource ChromeBar}">
+  <Border Padding="8,0,8,8" Style="{StaticResource ChromeBar}"
+          BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
     <DockPanel>
       <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" Command="{Binding NewFolderCommand}"
               ToolTip="New folder (Ctrl+Shift+N)">
@@ -16,92 +17,77 @@
 
       <Border DockPanel.Dock="Left" Width="1" Height="18" Margin="8,0" Background="{DynamicResource Border}" />
 
-      <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Command="{Binding CutCommand}" ToolTip="Cut (Ctrl+X)">
-        <TextBlock Style="{StaticResource Glyph}" Text="&#xE8C6;" />
+      <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" Command="{Binding CutCommand}" ToolTip="Cut (Ctrl+X)">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE8C6;" />
+          <TextBlock Text="Cut" Margin="6,0,0,0" />
+        </StackPanel>
       </Button>
-      <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Command="{Binding CopyCommand}" ToolTip="Copy (Ctrl+C)">
-        <TextBlock Style="{StaticResource Glyph}" Text="&#xE8C8;" />
+      <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" Command="{Binding CopyCommand}" ToolTip="Copy (Ctrl+C)">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE8C8;" />
+          <TextBlock Text="Copy" Margin="6,0,0,0" />
+        </StackPanel>
       </Button>
-      <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Command="{Binding PasteCommand}" ToolTip="Paste (Ctrl+V)">
-        <TextBlock Style="{StaticResource Glyph}" Text="&#xE77F;" />
+      <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" Command="{Binding PasteCommand}" ToolTip="Paste (Ctrl+V)">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE77F;" />
+          <TextBlock Text="Paste" Margin="6,0,0,0" />
+        </StackPanel>
       </Button>
 
       <Border DockPanel.Dock="Left" Width="1" Height="18" Margin="8,0" Background="{DynamicResource Border}" />
 
-      <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Command="{Binding RenameCommand}" ToolTip="Rename (F2)">
-        <TextBlock Style="{StaticResource Glyph}" Text="&#xE8AC;" />
+      <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" Command="{Binding RenameCommand}" ToolTip="Rename (F2)">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE8AC;" />
+          <TextBlock Text="Rename" Margin="6,0,0,0" />
+        </StackPanel>
       </Button>
-      <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Command="{Binding DeleteCommand}"
+      <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" Command="{Binding DeleteCommand}"
               ToolTip="Delete — Shift+Delete deletes permanently">
-        <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;" />
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;" />
+          <TextBlock Text="Delete" Margin="6,0,0,0" />
+        </StackPanel>
       </Button>
 
-      <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Click="OnMenuButtonClick"
-              ToolTip="Window transparency">
-        <TextBlock Style="{StaticResource Glyph}" Text="&#xE790;" />
+      <Button DockPanel.Dock="Right" Style="{StaticResource ToolButton}" Click="OnMenuButtonClick"
+              ToolTip="How the folder is shown (Ctrl+wheel steps through these)">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xF0E2;" />
+          <TextBlock Text="View" Margin="6,0,0,0" />
+        </StackPanel>
         <Button.ContextMenu>
           <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="Mica" IsEnabled="{Binding Look.Supported}"
-                      Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Mica}"
-                      IsChecked="{Binding Look.Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Mica}" />
-            <MenuItem Header="Mica Alt" IsEnabled="{Binding Look.Supported}"
-                      Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.MicaAlt}"
-                      IsChecked="{Binding Look.Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=MicaAlt}" />
-            <MenuItem Header="Acrylic" IsEnabled="{Binding Look.Supported}"
-                      Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Acrylic}"
-                      IsChecked="{Binding Look.Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Acrylic}" />
-            <MenuItem Header="Solid"
-                      Command="{Binding BackdropCommand}" CommandParameter="{x:Static pf:Backdrop.Solid}"
-                      IsChecked="{Binding Look.Backdrop, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=Solid}" />
-            <MenuItem Header="{Binding Look.Note}" Style="{StaticResource NoteItem}" />
+            <MenuItem Header="Details" Command="{Binding Look.ViewCommand}" CommandParameter="0"
+                      IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=0}" />
+            <MenuItem Header="List" Command="{Binding Look.ViewCommand}" CommandParameter="1"
+                      IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=1}" />
+            <Separator />
+            <MenuItem Header="Small icons" Command="{Binding Look.ViewCommand}" CommandParameter="32"
+                      IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=32}" />
+            <MenuItem Header="Medium icons" Command="{Binding Look.ViewCommand}" CommandParameter="48"
+                      IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=48}" />
+            <MenuItem Header="Large icons" Command="{Binding Look.ViewCommand}" CommandParameter="96"
+                      IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=96}" />
+            <MenuItem Header="Extra large icons" Command="{Binding Look.ViewCommand}" CommandParameter="256"
+                      IsChecked="{Binding Look.View, Mode=OneWay, Converter={StaticResource Is}, ConverterParameter=256}" />
           </ContextMenu>
         </Button.ContextMenu>
       </Button>
 
-      <Border DockPanel.Dock="Right" Margin="8,0,0,0" Padding="2" CornerRadius="5"
-              Background="{DynamicResource Hover}">
-        <StackPanel Orientation="Horizontal">
-          <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Details — 16 px icons"
-                       IsChecked="{Binding Look.IconSize, Converter={StaticResource Is}, ConverterParameter=16}">
-            <StackPanel>
-              <Rectangle Width="13" Height="2" Margin="0,0,0,3" Fill="{DynamicResource Fg}" />
-              <Rectangle Width="13" Height="2" Margin="0,0,0,3" Fill="{DynamicResource Fg}" />
-              <Rectangle Width="13" Height="2" Fill="{DynamicResource Fg}" />
-            </StackPanel>
-          </RadioButton>
-          <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Medium icons — 32 px"
-                       IsChecked="{Binding Look.IconSize, Converter={StaticResource Is}, ConverterParameter=32}">
-            <Rectangle Width="8" Height="8" RadiusX="1" RadiusY="1" Fill="{DynamicResource Fg}" />
-          </RadioButton>
-          <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Large icons — 48 px"
-                       IsChecked="{Binding Look.IconSize, Converter={StaticResource Is}, ConverterParameter=48}">
-            <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2" Fill="{DynamicResource Fg}" />
-          </RadioButton>
-          <RadioButton Style="{StaticResource Segment}" GroupName="IconSize" ToolTip="Extra large icons — 256 px"
-                       IsChecked="{Binding Look.IconSize, Converter={StaticResource Is}, ConverterParameter=256}">
-            <Rectangle Width="16" Height="16" RadiusX="2" RadiusY="2" Fill="{DynamicResource Fg}" />
-          </RadioButton>
-        </StackPanel>
-      </Border>
-
-      <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Click="OnSettingsClick"
-              Margin="4,0,0,0" ToolTip="Settings">
-        <TextBlock Style="{StaticResource Glyph}" Text="&#xE713;" />
-      </Button>
-
-      <!-- The map draws the sizes the column measured, so it is useless without them and the
-           switch says so by being disabled rather than by drawing an empty square. -->
+      <!-- The map draws the sizes the column measured, so it is disabled without them. -->
       <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}"
                     IsChecked="{Binding Look.Treemap}" IsEnabled="{Binding FolderSizes.On}"
                     ToolTip="Show this folder as areas, biggest first">
         <StackPanel Orientation="Horizontal">
-          <TextBlock Style="{StaticResource Glyph}" Text="&#xF0E2;" />
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE9F9;" />
           <TextBlock Text="Map" Margin="6,0,0,0" />
         </StackPanel>
       </ToggleButton>
 
-      <!-- Off by default because it is expensive, not because it is rare: a folder's size is a
-           full walk of everything under it. Measured, the whole user profile is 7.4s. -->
+      <!-- A folder's size is a full walk of everything under it. Measured, the whole user profile is 7.4s. -->
       <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}"
                     IsChecked="{Binding FolderSizes.On}"
                     ToolTip="Measure folder sizes in this folder (walks every file below them)">

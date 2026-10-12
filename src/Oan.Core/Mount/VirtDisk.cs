@@ -5,18 +5,10 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Oan.Core.Mount;
 
-/// <summary>
-/// virtdisk.dll — what Windows itself mounts an ISO with, and the whole point of this lane: it
-/// loads no shell extension. Explorer hangs for hours on this machine's ISOs because the .iso
-/// class is owned by DAEMON Tools, whose handler runs on the context menu and the default verb.
-/// Nothing below can reach that code.
-/// </summary>
+/// <summary>virtdisk.dll, what Windows itself mounts an ISO with. It loads no shell extension, so a hung .iso handler cannot be reached.</summary>
 internal static class VirtDisk
 {
-    /// <summary>
-    /// VIRTDISK_ERROR_NOT_ATTACHED. An ordinary answer — it is what an unattached disk says
-    /// when asked for its physical path, and what a detach says when there was nothing to undo.
-    /// </summary>
+    /// <summary>VIRTDISK_ERROR_NOT_ATTACHED: what an unattached disk says when asked for its physical path, or when detached.</summary>
     internal const uint NotAttached = 0xC03A0015;
 
     private const uint DeviceIso = 1;
@@ -26,11 +18,7 @@ internal static class VirtDisk
     private const uint AccessDetach = 0x00040000;
     private const uint AccessGetInfo = 0x00080000;
 
-    /// <summary>
-    /// Read-only: the only sensible thing for an ISO, and the reason there is no UAC prompt.
-    /// Measured on this machine: 203 attaches on a filtered admin token, zero prompts. A VHDX
-    /// would need elevation; an ISO does not.
-    /// </summary>
+    /// <summary>Read-only, which is why there is no UAC prompt. Measured: 203 attaches on a filtered admin token, zero prompts.</summary>
     private const uint AttachReadOnly = 0x00000001;
 
     internal static uint Open(string path, out SafeFileHandle handle)
@@ -40,11 +28,7 @@ internal static class VirtDisk
             AccessAttachReadOnly | AccessDetach | AccessGetInfo, 0, nint.Zero, out handle);
     }
 
-    /// <summary>
-    /// No PERMANENT_LIFETIME, deliberately: the attach is undone when the last handle to it
-    /// closes. So closing our handle ejects the image, and a crashed OAN does not leave the
-    /// user's drive list littered.
-    /// </summary>
+    /// <summary>No PERMANENT_LIFETIME, deliberately: the attach is undone when the last handle closes, so a crashed OAN leaves nothing mounted.</summary>
     internal static uint Attach(SafeFileHandle handle) =>
         AttachVirtualDisk(handle, nint.Zero, AttachReadOnly, 0, nint.Zero, nint.Zero);
 
@@ -58,10 +42,7 @@ internal static class VirtDisk
         return GetVirtualDiskPhysicalPath(handle, ref bytes, buffer) == 0 ? buffer.ToString() : null;
     }
 
-    /// <summary>
-    /// A reason in words. Win32Exception renders the 0xC03A… virtdisk codes as "Unknown error",
-    /// which is worse than the number, so those are shown as the number.
-    /// </summary>
+    /// <summary>Win32Exception renders the 0xC03A… virtdisk codes as "Unknown error", so those are shown as the number.</summary>
     internal static string Explain(uint code, string what) =>
         $"{what} ({(code < 0x10000 ? new Win32Exception((int)code).Message : $"0x{code:X8}")})";
 

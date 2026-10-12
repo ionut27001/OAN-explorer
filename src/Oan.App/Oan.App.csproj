@@ -10,6 +10,8 @@
   <ItemGroup>
     <!-- Also a resource, not only the exe's icon: the title bar draws it. -->
     <Resource Include="oan.ico" />
+    <!-- Compiled from LiquidGlass.hlsl by hand; the command is at the top of that file. -->
+    <Resource Include="Controls\LiquidGlass.ps" />
     <ProjectReference Include="..\Oan.Core\Oan.Core.csproj" />
     <InternalsVisibleTo Include="Oan.Tests" />
   </ItemGroup>

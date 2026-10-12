@@ -2,17 +2,8 @@ using System.Runtime.InteropServices;
 
 namespace Oan.Core.Shell;
 
-/// <summary>
-/// The COM half of the context menu: turning paths into an <c>IContextMenu</c> and an HMENU.
-///
-/// Separated from ShellContextMenu because the two answer different questions. This one knows
-/// how the shell is asked; that one knows what to do when it does not answer — the deadline, the
-/// refusal wording, and which kinds of file have hung before. Both were in one file until it
-/// grew past the length the shape check allows, and the seam was already there.
-///
-/// Everything here runs on the STA thread its caller set up. None of it is safe to call from the
-/// window's own thread: that is the whole point of the arrangement.
-/// </summary>
+/// <summary>The COM half of the context menu: turning paths into an <c>IContextMenu</c> and an HMENU.
+/// Everything here must run on the STA thread its caller set up, never on the window's own thread.</summary>
 internal static class MenuBuilder
 {
     /// <summary>The shell's ids start here; everything below belongs to OAN's own entries.</summary>
@@ -33,8 +24,13 @@ internal static class MenuBuilder
             try { shellFolder = (Native.IShellFolder)Marshal.GetObjectForIUnknown(raw); }
             finally { Marshal.Release(raw); }
 
-            if (shellFolder.CreateViewObject(owner, Native.IID_IContextMenu, out var view) != 0 || view == 0)
-                return default;
+            // Released here, not by the GC: the finalizer would have to wait for this thread, forever if an extension hangs it.
+            int created;
+            nint view;
+            try { created = shellFolder.CreateViewObject(owner, Native.IID_IContextMenu, out view); }
+            finally { Marshal.ReleaseComObject(shellFolder); }
+
+            if (created != 0 || view == 0) return default;
 
             Native.IContextMenu menu;
             try { menu = (Native.IContextMenu)Marshal.GetObjectForIUnknown(view); }
@@ -56,27 +52,46 @@ internal static class MenuBuilder
         }
     }
 
-    private static void InsertOwn(nint popup, IReadOnlyList<OwnMenuItem>? own)
+    internal static void InsertOwn(nint popup, IReadOnlyList<OwnMenuItem>? own)
     {
         if (own is not { Count: > 0 }) return;
 
-        Native.InsertMenuW(popup, 0, Native.MF_BYPOSITION | Native.MF_SEPARATOR, 0, null);
-        for (var i = own.Count - 1; i >= 0; i--)
-            Native.InsertMenuW(popup, 0, Native.MF_BYPOSITION, (nuint)own[i].Id, own[i].Label);
+        Insert(popup, 0, OwnMenuItem.Separator);
+        for (var i = own.Count - 1; i >= 0; i--) Insert(popup, 0, own[i]);
     }
 
-    /// <summary>
-    /// Everything that loads somebody else's code: binding the shell object for the selection, and
-    /// asking it — and every extension registered for these files — to fill a menu. This is the
-    /// call that hangs on this machine, so it only ever runs on the STA thread.
-    /// </summary>
+    private static void Insert(nint menu, uint position, OwnMenuItem item)
+    {
+        if (item.Label.Length == 0)
+        {
+            Native.InsertMenuW(menu, position, Native.MF_BYPOSITION | Native.MF_SEPARATOR, 0, null);
+            return;
+        }
+
+        var flags = Native.MF_BYPOSITION | (item.Checked ? Native.MF_CHECKED : 0) | (item.Enabled ? 0 : Native.MF_GRAYED);
+        var id = (nuint)item.Id;
+
+        // Kept nowhere: DestroyMenu on the menu it is in destroys it too.
+        if (item.Items is { } items)
+        {
+            var submenu = Native.CreatePopupMenu();
+            if (submenu == 0) return;
+
+            for (var i = 0; i < items.Count; i++) Insert(submenu, (uint)i, items[i]);
+            (flags, id) = (flags | Native.MF_POPUP, (nuint)submenu);
+        }
+
+        Native.InsertMenuW(menu, position, flags, id, item.Label);
+    }
+
+    /// <summary>Binds the shell object for the selection and asks every registered extension to fill a menu.
+    /// This is the call that can hang, so it only ever runs on the STA thread.</summary>
     internal static (Native.IContextMenu? Menu, nint Popup) Build(IReadOnlyList<string> paths, uint flags, IReadOnlyList<OwnMenuItem>? own = null)
     {
         var pidls = new List<nint>(paths.Count);
         try
         {
-            // One path the shell cannot parse — a deleted item still in the list, a dropped
-            // share — must not cost the user the menu for everything else selected.
+            // One path the shell cannot parse must not cost the menu for everything else selected.
             foreach (var path in paths)
                 if (Native.SHParseDisplayName(path, 0, out var pidl, 0, out _) == 0 && pidl != 0)
                     pidls.Add(pidl);
@@ -89,8 +104,7 @@ internal static class MenuBuilder
             var popup = Native.CreatePopupMenu();
             if (popup != 0 && menu.QueryContextMenu(popup, 0, FirstCommand, LastCommand, flags) >= 0)
             {
-                // Ours go in after the shell has filled the menu, at the top, so they are the
-                // first thing under the cursor and the shell's numbering is untouched.
+                // Ours go in after the shell has filled the menu, so the shell's numbering is untouched.
                 InsertOwn(popup, own);
                 return (menu, popup);
             }

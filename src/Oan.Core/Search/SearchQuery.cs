@@ -29,10 +29,7 @@ public sealed record SearchQuery
 
     public bool SearchesContent => !string.IsNullOrEmpty(Content);
 
-    /// <summary>
-    /// Null when the query is usable. A message when it is not — an unparsable regex is the
-    /// common case, and it must be told apart from a valid pattern that simply found nothing.
-    /// </summary>
+    /// <summary>Null when the query is usable, otherwise the message (an unparsable regex is the common case).</summary>
     public string? Invalid()
     {
         if (string.IsNullOrWhiteSpace(Root)) return "No folder to search.";
@@ -64,10 +61,7 @@ public sealed record SearchHit
     public string? Preview { get; init; }
 }
 
-/// <summary>
-/// What the run could not do. Every count here is a reason a result set is a floor rather than
-/// a total, and the UI has to be able to say so.
-/// </summary>
+/// <summary>What the run could not do; every count here makes the result set a floor rather than a total.</summary>
 public sealed record SearchTally
 {
     public int FilesSeen { get; init; }

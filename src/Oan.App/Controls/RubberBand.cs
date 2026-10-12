@@ -4,10 +4,7 @@ using System.Windows.Media;
 
 namespace Oan.App.Controls;
 
-/// <summary>
-/// The selection rectangle, drawn over the list rather than in it — an adorner needs no place in
-/// the layout tree, so the list's own virtualisation and scrolling are untouched.
-/// </summary>
+/// <summary>The selection rectangle. An adorner, so the list's layout, virtualisation and scrolling are untouched.</summary>
 public sealed class RubberBand : Adorner
 {
     private static readonly Pen Edge = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(0x4C, 0xC2, 0xFF)), 1));

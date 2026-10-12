@@ -6,14 +6,8 @@ using System.Threading.Channels;
 
 namespace Oan.Core.Search;
 
-/// <summary>
-/// Walks a tree and reports what matches, handing over each hit as it is found rather than at
-/// the end — on a large tree the first answer arrives in milliseconds and the rest follow.
-/// Nothing is indexed and nothing is cached: the answer is what is on disk right now.
-///
-/// One run per instance at a time; <see cref="Tally"/> belongs to the latest
-/// <see cref="RunAsync"/>.
-/// </summary>
+/// <summary>Walks a tree and streams each hit as it is found; nothing is indexed or cached.
+/// One run per instance at a time; <see cref="Tally"/> belongs to the latest <see cref="RunAsync"/>.</summary>
 public sealed class FileSearch
 {
     const int Queue = 512;
@@ -36,11 +30,7 @@ public sealed class FileSearch
         Unreadable = Volatile.Read(ref unreadable),
     };
 
-    /// <summary>
-    /// Not an iterator, on purpose: a pattern that cannot be parsed has to be refused when the
-    /// search is asked for, not when the caller happens to read the first result — otherwise a
-    /// broken query is indistinguishable from one that found nothing.
-    /// </summary>
+    /// <summary>Not an iterator, on purpose: a bad pattern must be refused when the search is asked for, not on first read.</summary>
     public IAsyncEnumerable<SearchHit> RunAsync(SearchQuery query, CancellationToken ct = default)
     {
         if (query.Invalid() is { } refusal) throw new ArgumentException(refusal, nameof(query));
@@ -65,9 +55,7 @@ public sealed class FileSearch
         }
         finally
         {
-            // The caller may have walked away mid-stream, leaving the walk blocked on a queue
-            // nobody is reading; and a failure inside the run surfaces here rather than as a
-            // task nobody waited for.
+            // The caller may have walked away mid-stream, leaving the walk blocked on a full queue.
             stop.Cancel();
             await Settle(run).ConfigureAwait(false);
         }
@@ -92,12 +80,10 @@ public sealed class FileSearch
         }
     }
 
-    /// <summary>The walk is one thread because the disk is one disk; reading files is not.</summary>
     async Task Scan(
         SearchQuery query, NameTest name, IContentMatcher matcher, ChannelWriter<SearchHit> results, CancellationToken ct)
     {
-        // Bounded: the walk finds paths far faster than files can be read, and an unbounded
-        // queue would hold a million of them in memory on a big tree.
+        // Bounded: the walk finds paths far faster than files can be read.
         var queue = Channel.CreateBounded<Candidate>(new BoundedChannelOptions(Queue) { SingleWriter = true });
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
@@ -142,8 +128,7 @@ public sealed class FileSearch
         {
             found = matcher.Match(candidate.Path, candidate.Size ?? 0, ct);
         }
-        // A file can vanish or be locked between the walk and the read. That is one line of the
-        // tally, not the end of the search.
+        // A file can vanish or be locked between the walk and the read.
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             found = new ContentResult(false, null, null, SkipReason.Unreadable);
@@ -160,8 +145,7 @@ public sealed class FileSearch
 
     IEnumerable<Candidate> Walk(SearchQuery query, NameTest name, CancellationToken ct)
     {
-        // Before the loop, not only inside it: a tree with nothing to return never enters the
-        // loop, and a search cancelled before it started must still come back cancelled.
+        // Checked before the loop too: a tree with nothing to return never enters it.
         ct.ThrowIfCancellationRequested();
 
         Walker? walker = null;
@@ -209,15 +193,9 @@ public sealed class FileSearch
         catch (OperationCanceledException) { }
     }
 
-    /// <summary>A file worth opening. Its size is the directory record's, never a guess.</summary>
     readonly record struct Candidate(string Path, string Name, long? Size, DateTime Modified, FileAttributes Attributes);
 
-    /// <summary>
-    /// One pass over the whole tree. Every filter that can be answered from the directory
-    /// record is answered here: name, size and timestamp are already in hand, so rejecting an
-    /// entry costs nothing and allocates nothing, while producing a candidate allocates a path
-    /// and may cost a file being opened.
-    /// </summary>
+    /// <summary>One pass over the tree. Every filter the directory record can answer is applied here, before a path is allocated.</summary>
     sealed class Walker : FileSystemEnumerator<Candidate>
     {
         const int AccessDenied = 5;
@@ -231,12 +209,10 @@ public sealed class FileSearch
         public Walker(FileSearch owner, SearchQuery query, NameTest name, CancellationToken ct)
             : base(query.Root, new EnumerationOptions
             {
-                // IgnoreInaccessible would drop denied folders silently and leave a partial
-                // result looking complete; ContinueOnError counts them instead.
+                // IgnoreInaccessible would drop denied folders silently; ContinueOnError counts them instead.
                 IgnoreInaccessible = false,
                 RecurseSubdirectories = true,
-                // Applied by the base enumerator before our callbacks run, so hidden has to be
-                // decided in one place below or IncludeHidden would be a setting with no effect.
+                // Skipping is applied by the base enumerator before our callbacks, so hidden is decided below instead.
                 AttributesToSkip = 0,
             })
         {
@@ -251,8 +227,7 @@ public sealed class FileSearch
             walking = true;
             ct.ThrowIfCancellationRequested();
 
-            // C:\Users\All Users is a junction to ProgramData on every Windows install:
-            // following reparse points double-counts a tree at best and, on a loop, never ends.
+            // Following reparse points double-counts at best and never ends on a loop (C:\Users\All Users).
             if ((entry.Attributes & FileAttributes.ReparsePoint) != 0) return false;
 
             return query.IncludeHidden || (entry.Attributes & Concealed) == 0;
@@ -261,9 +236,7 @@ public sealed class FileSearch
         protected override bool ShouldIncludeEntry(ref FileSystemEntry entry)
         {
             walking = true;
-            // MoveNext can reject thousands of entries before it returns one, so the check has
-            // to live inside the callback: outside it, a cancelled search would keep reading
-            // the disk until the next match, which on a large tree can be never.
+            // MoveNext can reject thousands of entries before returning one, so cancellation is checked in here.
             ct.ThrowIfCancellationRequested();
 
             if (entry.IsDirectory) Interlocked.Increment(ref owner.folders);
@@ -271,9 +244,7 @@ public sealed class FileSearch
 
             if (!query.IncludeHidden && (entry.Attributes & Concealed) != 0) return false;
 
-            // A folder is a result when the question is about names. It cannot be one when the
-            // question is about contents, because there is nothing inside a folder to read — and
-            // returning folders there would be a hit the user cannot explain.
+            // A folder can match a name query, never a content query.
             if (entry.IsDirectory)
                 return !query.SearchesContent && name.Matches(entry.FileName);
 
@@ -291,12 +262,8 @@ public sealed class FileSearch
             entry.ToFullPath(), entry.FileName.ToString(), entry.IsDirectory ? null : entry.Length,
             entry.LastWriteTimeUtc.LocalDateTime, entry.Attributes);
 
-        /// <summary>
-        /// Also called from the base constructor, when the root itself cannot be opened — our
-        /// own fields are not set yet at that point, so that one is let through as an exception
-        /// and classified by the caller. Everything after the walk has started is counted and
-        /// stepped over: one denied folder does not end a search.
-        /// </summary>
+        /// <summary>Also called from the base constructor when the root cannot be opened; our fields are not set yet,
+        /// so that one is left to throw. After the walk has started, errors are counted and stepped over.</summary>
         protected override bool ContinueOnError(int error)
         {
             if (!walking) return false;
@@ -307,10 +274,7 @@ public sealed class FileSearch
         }
     }
 
-    /// <summary>
-    /// The name test, built once per run. It runs straight off the directory record's span, so
-    /// a name that does not match costs no allocation at all.
-    /// </summary>
+    /// <summary>The name test, built once per run; it runs off the directory record's span without allocating.</summary>
     sealed class NameTest
     {
         readonly string? text;
@@ -338,11 +302,7 @@ public sealed class FileSearch
             catch (RegexMatchTimeoutException) { return false; }
         }
 
-        /// <summary>
-        /// Anchored, with everything that is not a wildcard escaped: let the metacharacters
-        /// through and the glob report(1)* quietly becomes a pattern that also matches
-        /// report1.txt.
-        /// </summary>
+        /// <summary>Anchored, with everything that is not a wildcard escaped: report(1)* must not match report1.txt.</summary>
         static string FromGlob(string glob)
         {
             var pattern = new StringBuilder(glob.Length * 2).Append('^');
@@ -355,9 +315,8 @@ public sealed class FileSearch
         {
             var options = RegexOptions.CultureInvariant | (caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase);
 
-            // NonBacktracking bounds what a hostile pattern can cost. It refuses lookarounds
-            // and backreferences, which SearchQuery.Invalid() accepts as valid regex — those
-            // fall back to the ordinary engine, where the timeout is the only guard left.
+            // NonBacktracking bounds a hostile pattern but refuses lookarounds and backreferences;
+            // those fall back to the ordinary engine, where the timeout is the only guard.
             try { return new Regex(pattern, options | RegexOptions.NonBacktracking, PatternBudget); }
             catch (NotSupportedException) { return new Regex(pattern, options, PatternBudget); }
         }

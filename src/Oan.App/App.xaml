@@ -8,6 +8,7 @@
         <ResourceDictionary Source="Themes/ScrollBars.xaml" />
         <ResourceDictionary Source="Themes/Controls.xaml" />
         <ResourceDictionary Source="Themes/FileColumns.xaml" />
+        <ResourceDictionary Source="Themes/FileTiles.xaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>
